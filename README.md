@@ -40,7 +40,7 @@ Stop retains database records and the Docker volume. Local editor mode requires 
 
 Saved cooking preferences do not yet adapt sample menus. Put and forget recipes (Instant Pot and source-verified overnight options) are planned for phase 2.
 
-Real receipt extraction, automatic recipe imports, the planning agent and durable menu history remain pending. The weekly preview does not yet use the saved recipe library or its calculations. Child food-variety guidance and normalized stock reconciliation remain explicit review requirements for the upcoming planning runtime. Dietary restrictions are stored but are not yet enforced against the sample menu. Sample receipt confirmation is disabled in persistent mode to keep sample purchases out of actual stock.
+Real receipt extraction, automatic recipe imports, the planning agent and durable menu history remain pending. The weekly preview does not yet use the saved recipe library or its calculations. Child food-variety guidance and normalized stock reconciliation remain explicit review requirements for the upcoming planning runtime. Dietary restrictions are stored but are not yet enforced against the sample menu. Sample receipt confirmation uses a separate session-only stock preview in persistent mode, keeping sample purchases out of actual stock.
 
 ## Preview without a database
 
@@ -56,7 +56,7 @@ This uses sample household records and session-only storage. The sidebar states 
 .venv/bin/python -m database.test
 ```
 
-The runner creates an isolated test database, runs the suite and removes that test database. It does not edit the household used by the app. The current milestone passes 58 tests against PostgreSQL, including household isolation, stale saves, rollback, revoked access and Streamlit persistence across new sessions.
+The runner creates an isolated test database, runs the suite and removes that test database. It does not edit the household used by the app. The current milestone passes 59 tests against PostgreSQL, including household isolation, stale saves, rollback, revoked access and Streamlit persistence across new sessions.
 
 Without integration configuration, python -m unittest discover -s tests runs unit/preview tests and reports database tests as skipped. External test environments can supply MENUAGENT_TEST_ADMIN_DATABASE_URL and MENUAGENT_TEST_DATABASE_URL; see docs/database.md.
 

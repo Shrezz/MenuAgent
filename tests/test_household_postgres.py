@@ -201,6 +201,30 @@ class HouseholdPostgresTests(unittest.TestCase):
             service.confirm_sample_receipt(service.receipt_items)
         self.assertEqual(self.repo.read().inventory, [])
 
+    def test_persistent_ui_sample_confirmation_uses_separate_stock(self):
+        service = HouseholdService(self.repo)
+        service.save_inventory([{'Item': 'Rice', 'Quantity': 1000}])
+        before = self.repo.read()
+        with self.ui_environment():
+            app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            app.switch_page('application/ui/pages/groceries.py').run()
+            self.button(app, 'Load sample receipt').click().run()
+            self.assertFalse(self.button(app, 'Confirm sample purchases').disabled)
+            app.session_state['receipt-editor'] = {'edited_rows': {0: {'Quantity': 350.0}},
+                                                    'deleted_rows': [], 'added_rows': []}
+            self.button(app, 'Confirm sample purchases').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            self.assertTrue(self.button(app, 'Confirm sample purchases').disabled)
+            preview = app.session_state['_receipt_sample_service']
+            self.assertEqual(preview.inventory[0]['Quantity'], 350.0)
+            self.assertEqual(len(preview.inventory), 4)
+            self.assertEqual(self.repo.read().inventory, before.inventory)
+            self.assertEqual(self.repo.read().version, before.version)
+            self.button(app, 'Load sample receipt').click().run()
+            self.assertTrue(self.button(app, 'Confirm sample purchases').disabled)
+            self.assertEqual(len(preview.inventory), 4)
+
 
     def test_recipe_revisions_and_food_snapshots_survive_new_services(self):
         service = HouseholdService(self.repo)

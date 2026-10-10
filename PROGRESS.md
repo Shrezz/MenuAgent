@@ -32,7 +32,7 @@ Saved recipes do not replace the existing weekly-menu preview yet. Actual agent 
 - Access checked on each application rerun, including after editor access is revoked. Saved-record reload clears stale form values.
 - One local editor behind a loopback listener. Optional OIDC wiring requires provider configuration and provisioned editor membership; a real provider login is not yet verified.
 - Private PostgreSQL setup/start/stop/status commands. Docker setup and integration tests run successfully here. Native startup is offered for other environments but could not be exercised because this workspace blocks native shared-memory allocation.
-- Sample receipt confirmation disabled for persistent households. Menu-preview resets retain saved household records.
+- Sample receipt confirmation uses isolated session-only preview stock in persistent households, with visible confirmation and duplicate prevention. It cannot mutate real inventory. Menu-preview resets retain saved household records.
 
 ## Cooking preferences revision — plan version 2
 
@@ -61,7 +61,7 @@ Equipment and qualitative effort can now be entered per recipe. Household equipm
 
 ## Verification
 
-Tested with Python 3.12, Streamlit 1.65.0 and real PostgreSQL 17. The full suite passes **58 tests**, including new-session profile/preference/stock persistence, household isolation through repositories and raw SQL, forged household access, access revocation, blocked self-provisioning, unsafe role rejection, stale saves, transaction rollback, unknown quantities, all five pages with an empty persistent household and the existing preview flows.
+Tested with Python 3.12, Streamlit 1.65.0 and real PostgreSQL 17. The full suite passes **59 tests**, including new-session profile/preference/stock persistence, household isolation through repositories and raw SQL, forged household access, access revocation, blocked self-provisioning, unsafe role rejection, stale saves, transaction rollback, unknown quantities, all five pages with an empty persistent household and the existing preview flows.
 
 ```sh
 python -m database.local setup

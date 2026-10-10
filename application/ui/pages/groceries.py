@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from application.ui.components import inventory_columns, page_heading, records, service
+from application.services.demo import DemoService
 from database.connection import StorageUnavailable
 
 demo = service()
@@ -23,24 +24,37 @@ with receipt_tab:
         if st.button("Load sample receipt", type="primary", width="stretch"):
             st.session_state["show_sample_receipt"] = True
     if st.session_state.get("show_sample_receipt"):
+        if demo.persistent:
+            if "_receipt_sample_service" not in st.session_state:
+                sample = DemoService()
+                sample.inventory = []
+                st.session_state["_receipt_sample_service"] = sample
+            receipt_preview = st.session_state["_receipt_sample_service"]
+        else:
+            receipt_preview = demo
         st.subheader("Review sample items")
         st.caption("These sample items are not extracted from your uploaded image.")
+        if demo.persistent:
+            st.info("Try editing and confirming these items. They go into separate sample stock for this session; your saved kitchen stock stays unchanged.")
         with st.form("receipt-review"):
-            edited = st.data_editor(demo.receipt_items, column_config=inventory_columns(),
+            edited = st.data_editor(receipt_preview.receipt_items, column_config=inventory_columns(),
                                     num_rows="dynamic", width="stretch", key="receipt-editor")
             confirmed = st.form_submit_button("Confirm sample purchases",
-                                              disabled=demo.persistent or "sample-receipt-v1" in demo.confirmed_receipts)
-        if demo.persistent:
-            st.caption("Sample purchases only update preview mode. Enter your actual purchases under Kitchen stock.")
+                                              disabled="sample-receipt-v1" in receipt_preview.confirmed_receipts)
         if confirmed:
             try:
-                demo.confirm_sample_receipt(records(edited))
+                receipt_preview.confirm_sample_receipt(records(edited))
                 st.rerun()
             except (ValueError, StorageUnavailable) as error:
                 st.error(str(error))
-        if demo.confirmed_receipts:
-            st.success("Sample purchases added to kitchen stock for this session.")
+        if receipt_preview.confirmed_receipts:
+            st.success("Sample purchases confirmed in the separate sample stock preview." if demo.persistent
+                       else "Sample purchases added to kitchen stock for this session.")
             st.caption("This sample receipt has already been confirmed once.")
+            if demo.persistent:
+                st.subheader("Sample stock preview")
+                st.dataframe(receipt_preview.inventory, hide_index=True, width="stretch")
+                st.caption("Session-only example. Enter actual groceries under Kitchen stock to save them.")
 with stock_tab:
     st.caption("Leave quantities blank for confirmed, untracked staples.")
     with st.form("inventory-review"):
