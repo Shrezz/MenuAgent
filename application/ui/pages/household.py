@@ -1,6 +1,6 @@
 import streamlit as st
 from dataclasses import replace
-from application.domain.households import AGE_GROUPS, CUISINES
+from application.domain.households import AGE_GROUPS, CUISINES, COOKING_EFFORTS, MEAL_PREP_PREFERENCES, WEEKDAYS
 from application.ui.components import page_heading, service
 from database.connection import StorageUnavailable
 
@@ -67,15 +67,27 @@ with st.form("shared-settings"):
     chosen_cuisines = st.multiselect("Usual cuisines", CUISINES,
                                     default=demo.cuisines, key="profile-shared-cuisines")
     left, right = st.columns(2)
-    daily_minutes = left.number_input("Daily active cooking budget (min)", min_value=10, max_value=180,
-                                      value=demo.daily_minutes, step=5, key="profile-shared-daily")
-    batch_minutes = right.number_input("Sunday batch preparation budget (min)", min_value=0, max_value=180,
-                                       value=demo.batch_minutes, step=5, key="profile-shared-batch")
+    efforts = list(COOKING_EFFORTS)
+    prep_options = list(MEAL_PREP_PREFERENCES)
+    cooking_effort = left.selectbox("Usual cooking effort", efforts,
+                                   index=efforts.index(demo.cooking_effort) if demo.cooking_effort else None,
+                                   format_func=COOKING_EFFORTS.get, key="profile-shared-effort",
+                                   placeholder="Choose what feels manageable",
+                                   help="Describe the work you are comfortable with. Recipe times vary from person to person.")
+    meal_prep = right.selectbox("Weekly meal-prep preference", prep_options,
+                               index=prep_options.index(demo.meal_prep) if demo.meal_prep else None,
+                               format_func=MEAL_PREP_PREFERENCES.get, key="profile-shared-prep",
+                               placeholder="Choose a prep preference",
+                               help="Preparing components ahead can make different meals easier later in the week.")
+    busy_days = st.multiselect("Usually busier days", WEEKDAYS, default=demo.busy_days,
+                               key="profile-shared-busy",
+                               help="The planner will favor easy recipes on these days, with fewer steps and less hands-on work.")
     st.caption("One cook prepares shared meals. Individual differences use portions and easy additions.")
+    st.caption("These preferences are saved for the future planner. Sample menus do not yet adapt to them.")
     shared_saved = st.form_submit_button("Save shared preferences")
 if shared_saved:
     try:
-        demo.save_settings(chosen_cuisines, daily_minutes, batch_minutes)
+        demo.save_settings(chosen_cuisines, cooking_effort, meal_prep, busy_days)
         st.success(f"Shared preferences saved {save_scope}.")
     except (ValueError, StorageUnavailable) as error:
         st.error(str(error))

@@ -43,8 +43,12 @@ class HouseholdValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             clean_inventory([{'Item': 'Rice', 'Quantity': 500}, {'Item': ' rice ', 'Quantity': 200}])
 
-    def test_settings_allow_unentered_budgets_and_validate_entered_values(self):
-        self.assertEqual(clean_settings([], None, None), ([], None, None))
-        for args in ((['Unlisted'], 45, 60), (['Indian'], -1, 60), (['Indian'], 45, 181), (['Indian'], True, 60)):
-            with self.assertRaises(ValueError):
+    def test_settings_allow_unentered_preferences_and_validate_choices(self):
+        self.assertEqual(clean_settings([], None, None, []), ([], None, None, []))
+        self.assertEqual(clean_settings(['Indian'], 'assembly', 'none', ['Friday', 'Monday']),
+                         (['Indian'], 'assembly', 'none', ['Monday', 'Friday']))
+        for args in ((['Unlisted'], 'simple', 'small', []), (['Indian'], 'quick', 'small', []),
+                     (['Indian'], 'simple', 'always', []), (['Indian'], 'simple', 'small', ['Funday']),
+                     (['Indian'], 'simple', 'small', ['Monday', 'Monday'])):
+            with self.subTest(args=args), self.assertRaises(ValueError):
                 clean_settings(*args)

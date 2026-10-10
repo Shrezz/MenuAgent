@@ -10,6 +10,17 @@ LOCATIONS = ("Fridge", "Pantry", "Freezer")
 UNITS = ("g", "ml", "each")
 STOCK_STATUSES = ("Available", "Use soon", "Low", "Out")
 TARGET_KEYS = ("kcal", "protein", "carbs", "fat")
+COOKING_EFFORTS = {
+    "assembly": "Mostly assembly or reheating",
+    "simple": "Simple cooking",
+    "flexible": "Comfortable with more involved meals",
+}
+MEAL_PREP_PREFERENCES = {
+    "none": "No weekly meal prep",
+    "small": "A small prep session",
+    "larger": "A larger weekly prep session",
+}
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def clean_member(member: Member) -> Member:
@@ -34,13 +45,16 @@ def clean_member(member: Member) -> Member:
                    dislikes=str(member.dislikes).strip(), restrictions=str(member.restrictions).strip())
 
 
-def clean_settings(cuisines, daily_minutes, batch_minutes):
+def clean_settings(cuisines, cooking_effort, meal_prep, busy_days):
     if any(value not in CUISINES for value in cuisines) or len(set(cuisines)) != len(cuisines):
         raise ValueError("Choose distinct cuisines from the available list.")
-    for value, low, high, label in ((daily_minutes, 10, 180, "daily cooking"), (batch_minutes, 0, 180, "batch preparation")):
-        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high):
-            raise ValueError(f"Enter a {label} budget between {low} and {high} minutes.")
-    return list(cuisines), daily_minutes, batch_minutes
+    if cooking_effort is not None and cooking_effort not in COOKING_EFFORTS:
+        raise ValueError("Choose a supported cooking effort.")
+    if meal_prep is not None and meal_prep not in MEAL_PREP_PREFERENCES:
+        raise ValueError("Choose a supported meal-prep preference.")
+    if any(day not in WEEKDAYS for day in busy_days) or len(set(busy_days)) != len(busy_days):
+        raise ValueError("Choose distinct weekdays for busier days.")
+    return list(cuisines), cooking_effort, meal_prep, [day for day in WEEKDAYS if day in busy_days]
 
 
 def clean_inventory(rows):

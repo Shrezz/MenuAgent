@@ -1,8 +1,8 @@
 # MenuAgent MVP Implementation Handoff
 
-**Plan version:** 1  
-**Recorded:** October 8, 2026  
-**Status:** MVP baseline from the implementation handoff
+**Plan version:** 2<br>
+**Recorded:** October 9, 2026<br>
+**Status:** Agreed cooking-preference revision; version 1 remains archived unchanged
 
 MenuAgent is a household meal planning application with one planning agent. After the Sunday grocery receipt is uploaded and its items are reviewed, it produces the following week's breakfast, lunch, dinner, and snack plan. One person cooks shared meals; individual serving amounts and easy additions help accommodate different nutrition needs. The plan includes cooking tasks, targeted extra purchases, freezer suggestions, and nutrition estimates. Recipes and previous menus remain available for reuse and feedback.
 
@@ -23,17 +23,35 @@ The application owns records, job execution, and household interaction. The agen
 | Proposed default | Use a responsive web application, PostgreSQL, receipt image storage, and a background job worker. Framework, hosting, and model providers remain open. |
 | Proposed default | Start with one household editor. Member nutrition profiles are separate records and do not require separate user accounts. |
 | Proposed default | Sunday uploads plan Monday through Sunday in the household's timezone. Allow choosing another week. Receipt review precedes automatic draft generation. |
-| Proposed default | Treat adult nutrition targets as goals with visible deviations. Required restrictions, weekly uniqueness, and agreed cooking limits remain mandatory. |
+| Proposed default | Treat adult nutrition targets as goals with visible deviations. Required restrictions and weekly uniqueness remain mandatory. Cooking effort is a household preference; estimated minutes are guidance, not a pass/fail budget. |
 | Proposed default | Children default to food variety and balanced meal coverage. Numeric targets are optional and entered by the household when appropriate; the app does not calculate restrictive targets automatically. |
 
 The first release includes web recipe discovery, receipt parsing, batch preparation suggestions, and freezer tracking. They are delivered after the basic planning loop works, rather than being removed from MVP scope.
 
+## Cooking preferences — agreed revision in version 2
+
+Replace daily active cooking and Sunday preparation minute budgets with:
+
+- Usual cooking effort: mostly assembly/reheating, simple cooking, or comfortable with more involved meals.
+- Weekly meal-prep preference: none, a small session, or a larger weekly session.
+- Usually busier weekdays: prioritize easy recipes on these days, using fewer steps and less hands-on attention. Weekly exceptions will override these defaults when implemented.
+
+New household preferences remain unset until entered. Historical minute values are retained during migration, but are no longer read or enforced. Recipe times are approximate and differ by cook. Do not derive an effort score solely from recipe minutes. Equipment and recipe effort metadata arrive with recipe implementation; feedback can improve future rankings without silently changing saved preferences.
+
+The current UI saves these inputs; sample menu generation does not yet apply them. The future evaluator ranks workload suitability and returns visible recommendations when eligible easy recipes are unavailable. Restrictions, nutrition assessment and within-week dish uniqueness continue to apply.
+
+## Phase 2 — Put and forget recipes
+
+Add a categorized collection of meals requiring little active supervision, including Instant Pot and other supported appliances. Overnight cooking is a separate suitability attribute, not something inferred from a low-effort or appliance tag.
+
+Store supported equipment, required setup and interventions, active/passive time estimates, scheduling information, and source-backed cooking, holding and storage instructions. Recommend an overnight option only when the specific recipe and appliance guidance support that use; otherwise offer a daytime option. These features are deferred to phase 2 and are not part of this household-preference implementation.
+
 ## Weekly workflow and outputs
 
-1. Save household profiles, cuisines, cooking limits, recipes, and staple availability during setup.
+1. Save household profiles, cuisines, cooking-effort and meal-prep preferences, recipes, and staple availability during setup.
 2. Upload a receipt. Extract both readable text and structured grocery items, preserving unclear fields for correction.
 3. Review purchases and current stock. A receipt is evidence of purchases, not proof of what remains available.
-4. Set the week's exceptions, including meals away, attendance, busy days, and available batch preparation time.
+4. Set the week's exceptions, including meals away, attendance, busier days, and meal-prep preferences. Recurring busier weekdays are saved during setup; week-specific overrides remain planned work.
 5. Start a planning job from an immutable snapshot of confirmed inputs.
 6. Generate and check a shared menu. Use existing recipes and discover additional candidates when variety or ingredient coverage requires them.
 7. Present individual serving suggestions, estimated daily nutrition, gaps, cooking tasks, extra shopping, and freezer allocations.
@@ -50,7 +68,7 @@ The weekly result contains five connected outputs: the menu, individual nutritio
 | Shared meals | Use the same prepared dishes for attending household members. Vary amounts of shared components and ready-to-eat additions. |
 | Dietary restrictions | Check every recipe component against household restrictions. Unknown ingredient or restriction information produces a review issue. Conflicts return compatible shared alternatives. |
 | Weekly uniqueness | Prevent repeated finished dishes across planned meal slots. Rotate snack combinations; recurring staple ingredients and reused preparation components are allowed. Renamed dishes do not bypass duplicate checks. |
-| One cook | Count active work across all daily meals, assembly, and reheating. Include batch work on its scheduled day. Check required equipment and preparation dependencies. |
+| One cook | Evaluate steps, chopping, hands-on attention, equipment, cleanup and dependencies across all meals. Favor easy recipes on busier days. Use estimated minutes as guidance, not as a mandatory budget; individual cooking times differ. |
 | Inventory | Allocate ingredient quantities across the whole week and freezer reservations. Never spend the same tracked stock twice. Clearly distinguish stock on hand from proposed purchases and unquantified staples. |
 | Nutrition | Compute estimates from sourced ingredient quantities and member portions. Show target differences and data completeness. Missing values remain unknown rather than becoming zero. |
 | Variety over time | Consult recent cooked menus, cuisine, dish family, cooking style, and ratings. Historical repetition is a preference penalty; within-week duplication is a required check. |
@@ -194,7 +212,7 @@ The application records household decisions and actual cooking outcomes. Outcome
 
 ```mermaid
 flowchart TD
-    Setup["Set up profiles, recipes,<br/>staples and cooking limits"]
+    Setup["Set up profiles, recipes,<br/>staples and cooking preferences"]
     Receipt["Sunday receipt upload"]
     Confirm["Review groceries and available stock"]
     Start["Application starts snapshot-based job"]
@@ -234,16 +252,16 @@ Use household identifiers on owned records and store timestamps in UTC with a ho
 
 | Logical records | Important fields and relationships |
 | --- | --- |
-| Households and editor access | Timezone, shared cuisines, go-to dishes, equipment, daily cooking budgets, batch availability, shopping limits, variety preferences |
+| Households and editor access | Timezone, shared cuisines, go-to dishes, equipment, usual cooking effort, weekly meal-prep preference, recurring busy days, shopping limits, variety preferences |
 | Member profiles | Household, name, adult or child mode, age group where needed, manually entered targets, restrictions, likes and dislikes |
 | Ingredients and nutrient records | Canonical ingredient, aliases, units, preparation state, brand when relevant, nutrient values and units, source identifier, retrieved date |
 | Inventory lots and events | Ingredient, location, quantity or confirmed stock status, purchase or preparation date, freezer status, reservations, source event and version |
 | Receipts and receipt items | Image reference, duplicate fingerprint, raw text, parsed items, uncertain fields, reviewed values, receipt date, confirmation status |
-| Recipes and recipe versions | Source URL, cuisine, meal category, dish family, ingredients and amounts, servings or yield, instructions, active and passive time, equipment, components and storage references |
+| Recipes and recipe versions | Source URL, cuisine, meal category, dish family, ingredients and amounts, servings or yield, instructions, active and passive time estimates, effort features (steps, chopping, attention and cleanup), equipment, components and storage references |
 | Weekly plans and plan versions | Household, week start, draft or final status, input snapshot, rule settings, validation report, nutrition completeness, immutable recipe snapshots |
 | Meal slots and components | Date, meal type, attendance, recipe version, shared component quantities, lock state, provenance |
 | Member portions | Meal slot, member, shared component amounts, optional ready-to-eat additions, calculated estimates |
-| Cooking outcomes and feedback | Cooked or skipped state, confirmed quantities used, recipe rating, linked inventory event and freezer batches |
+| Cooking outcomes and feedback | Cooked or skipped state, confirmed quantities used, recipe rating, effort feedback (easy, too much work, longer than expected), optional actual cooking time, linked inventory event and freezer batches |
 | Planning jobs | Status, attempts, execution limits, input versions, snapshot, candidate version, tool results, error or issue summary, final draft reference |
 | Guidance documents | Topic, applicable age groups, publisher, source URL, document version or date, retrieved date, supported rules |
 
@@ -260,7 +278,7 @@ All tools receive trusted household and job context from the runtime. Read tools
 | `get_inventory` | Snapshot context and optional ingredient filter | Available lots, quantities, stock status, freezer batches, reservations and versions |
 | `update_inventory` | Reviewed changes, source event, expected version | Committed events and resulting version; repeated source events have no duplicate effect |
 | `get_menu_history` | Date range | Planned and actually cooked dishes, recipe families, cuisine and ratings |
-| `search_recipes` | Ingredients, cuisine, meal type, restrictions, active time, source choice | Saved candidates or web candidate URLs, source links and match details |
+| `search_recipes` | Ingredients, cuisine, meal type, restrictions, effort features, equipment, optional estimated time, source choice | Saved candidates or web candidate URLs, source links and match details |
 | `import_recipe` | Source URL | Structured recipe draft, ingredients, quantities, yield, timing, unknown fields and provenance |
 | `save_recipe` | Recipe draft and source | Stored version and validation state; incomplete recipes remain drafts |
 | `get_reference_guidance` | Topic and applicable age group | Curated passages or rules, sources, dates and applicability |
@@ -285,7 +303,7 @@ The worker follows `queued`, `running`, `needs_input`, `draft_ready`, `failed`, 
 
 Before starting a job, check whether the recipe pool can satisfy required meal coverage and weekly uniqueness. Before saving or finalizing, compare relevant profile and inventory versions with the snapshot; changed inputs require revalidation. Finalization replaces reservations for a prior active plan version without doubling them. Cooking events update stock exactly once and release the matching reservation. Skipped meals release their reservation.
 
-Configure maximum tool calls, candidate revisions, elapsed time, and external fetches per job. Record candidate versions, tool outcomes, sources and issue summaries. Stop when mandatory rules pass or the execution budget is exhausted. On failure, retain a resumable snapshot and return specific remedies, such as correcting a receipt quantity, adding a compatible recipe, or changing a cooking-time setting. Restrictions are never silently relaxed.
+Configure maximum tool calls, candidate revisions, elapsed time, and external fetches per job. Record candidate versions, tool outcomes, sources and issue summaries. Stop when mandatory rules pass or the execution budget is exhausted. On failure, retain a resumable snapshot and return specific remedies, such as correcting a receipt quantity, adding a compatible recipe, or adjusting a cooking-effort preference. Restrictions are never silently relaxed.
 
 Treat nutrition gaps and recent-week repetition as reported preferences. A ready draft may depend on explicitly listed extra purchases within the household's shopping settings. It must distinguish those purchases from stock already available and only reserve existing stock.
 
@@ -320,7 +338,7 @@ The first implementation milestone for the agent is a full week from manually en
 - Household members share prepared dishes. Two adults with different targets receive component portion suggestions without additional individually cooked dishes.
 - Children receive the selected age appropriate balanced-food mode; adult calorie targets are not copied into child profiles.
 - A finished dish is not scheduled repeatedly within a week, including superficially renamed duplicates. Prepared components can appear in distinct dishes.
-- Active work for all daily meals and scheduled batch tasks respects the agreed daily budget. Proposed shopping remains within household settings.
+- On busier days, favor recipes with fewer steps and less hands-on work while preserving shared dishes, restrictions and weekly variety. Honor the meal-prep preference, including no prep. Time estimates remain labeled guidance; missing effort details remain visible. Proposed shopping remains within household settings.
 - Ingredient allocation spans the whole week, including prepared and frozen batches. Stock on hand, proposed purchases and unknown quantities remain distinct.
 - Every reported nutrition estimate traces to recipe quantities and source records. Missing nutrient values are visible and are not treated as zero.
 - Swapping one meal preserves locks and recalculates whole-week quantities, nutrition, workload, shopping and reservations.
@@ -333,7 +351,7 @@ The first implementation milestone for the agent is a full week from manually en
 
 | Block | Required preparation |
 | --- | --- |
-| Rule configuration | Define mandatory restrictions, unique dish identity, daily cooking budgets, variety preferences, and shopping limits. |
+| Rule configuration | Define mandatory restrictions, unique dish identity, cooking-effort and meal-prep preferences, busy days, variety preferences, and shopping limits. |
 | Household form specification | Define profile fields, child mode, target units, cuisines, equipment and weekly attendance. |
 | Ingredient and stock specification | Define canonical names, units, preparation states, staple confirmation, batches, reservations and events. |
 | Database migrations | Define record ownership, versions, snapshots, duplicate keys and transaction boundaries. |
@@ -355,7 +373,7 @@ These choices can be resolved during implementation without changing the agreed 
 | Model, OCR and search providers | Use replaceable adapters and choose providers against the acceptance fixtures. |
 | New recipe frequency | A configurable small number each week, supplemented by rotation of saved recipes. |
 | Recent-menu cooldown | A configurable preference; weekly finished-dish uniqueness stays mandatory. |
-| Cooking and shopping limits | Entered during household setup, with exceptions by day. No unstated budget is assumed. |
+| Cooking preferences and shopping limits | Cooking effort and meal prep entered during household setup, with busier weekdays and future week-specific overrides. No effort preference is inferred from old minute budgets; shopping limits remain explicit. |
 | Adult target tolerance | User-configurable desired ranges; deviations remain visible and do not silently change stored targets. |
 | Unknown stock quantities | User-confirmed staples may be untracked; important uncertain quantities receive an availability issue or an explicit purchase suggestion. |
 | Child numeric targets | Balanced-food mode by default, optional household-entered targets when appropriate. |

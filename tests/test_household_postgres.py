@@ -1,5 +1,6 @@
 """Integration tests create and remove their own database, never the app's data."""
 from dataclasses import replace
+from hashlib import sha256
 import os
 from pathlib import Path
 import unittest
@@ -15,6 +16,9 @@ from streamlit.testing.v1 import AppTest
 from application.domain.models import Member
 from application.repositories.households import HouseholdRepository
 from application.services.households import HouseholdService
+from application.services.recipe_examples import example_recipe
+from application.repositories.recipes import RecipeRepository
+from application.domain.nutrition import calculate_recipe
 from database.connection import AccessDenied, ConcurrentChange, Database, EditorContext, StorageUnavailable
 from database.manage import bootstrap_household, grant_app_role, migrate
 
@@ -58,7 +62,32 @@ class HouseholdPostgresTests(unittest.TestCase):
         migrate(self.admin)
         with psycopg.connect(self.admin) as conn:
             count = conn.execute('SELECT count(*) FROM menuagent.schema_migrations').fetchone()[0]
-        self.assertEqual(count, 1)
+        self.assertEqual(count, 3)
+
+    def test_upgrade_preserves_records_without_guessing_effort_from_minutes(self):
+        name = 'menuagent_upgrade_' + uuid4().hex
+        with psycopg.connect(self.admin_base, autocommit=True) as conn:
+            conn.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier(name)))
+        try:
+            admin = make_conninfo(self.admin_base, dbname=name)
+            initial = APP_PATH.parent / 'database/migrations/001_household_records.sql'
+            content = initial.read_bytes()
+            with psycopg.connect(admin) as conn:
+                conn.execute(content.decode(), prepare=False)
+                conn.execute('CREATE TABLE menuagent.schema_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())')
+                conn.execute('INSERT INTO menuagent.schema_migrations (name, checksum) VALUES (%s, %s)',
+                             (initial.name, sha256(content).hexdigest()))
+                conn.execute("INSERT INTO menuagent.households (id, name, cuisines, daily_minutes, batch_minutes) VALUES (%s, 'Existing household', ARRAY['Indian'], 45, 60)", (self.a,))
+                conn.execute("INSERT INTO menuagent.members (household_id, id, name, kind) VALUES (%s, %s, 'Alex', 'Adult')", (self.a, str(uuid4())))
+            migrate(admin)
+            migrate(admin)
+            with psycopg.connect(admin) as conn:
+                row = conn.execute('SELECT cuisines, daily_minutes, batch_minutes, cooking_effort, meal_prep, busy_days FROM menuagent.households WHERE id = %s', (self.a,)).fetchone()
+                self.assertEqual(row, (['Indian'], 45, 60, None, None, []))
+                self.assertEqual(conn.execute('SELECT name FROM menuagent.members').fetchone()[0], 'Alex')
+        finally:
+            with psycopg.connect(self.admin_base, autocommit=True) as conn:
+                conn.execute(sql.SQL('DROP DATABASE {} WITH (FORCE)').format(sql.Identifier(name)))
 
     def test_profiles_preferences_and_stock_survive_a_new_service(self):
         service = HouseholdService(self.repo)
@@ -66,7 +95,7 @@ class HouseholdPostgresTests(unittest.TestCase):
         adult = service.members[0]
         service.save_member(replace(adult, targets={'kcal': 2100, 'protein': 125, 'carbs': 240, 'fat': 65}, restrictions='Peanuts'))
         service.add_member('Sam', 'Child', 'School age')
-        service.save_settings(['Indian', 'Mediterranean'], 45, 60)
+        service.save_settings(['Indian', 'Mediterranean'], 'simple', 'small', ['Wednesday', 'Monday'])
         service.save_inventory([{'Item': 'Yogurt', 'Location': 'Fridge', 'Quantity': 500, 'Unit': 'g'}, {'Item': 'Olive oil', 'Quantity': None, 'Unit': 'ml'}])
         reopened = HouseholdService(HouseholdRepository(Database(self.app_conninfo), self.context))
         by_name = {member.name: member for member in reopened.members}
@@ -74,7 +103,7 @@ class HouseholdPostgresTests(unittest.TestCase):
         self.assertEqual(by_name['Alex'].restrictions, 'Peanuts')
         self.assertIsNone(by_name['Sam'].targets)
         self.assertEqual(reopened.cuisines, ['Indian', 'Mediterranean'])
-        self.assertEqual((reopened.daily_minutes, reopened.batch_minutes), (45, 60))
+        self.assertEqual((reopened.cooking_effort, reopened.meal_prep, reopened.busy_days), ('simple', 'small', ['Monday', 'Wednesday']))
         self.assertIsNone(reopened.inventory[1]['Quantity'])
         self.assertEqual(self.other.read().members, [])
 
@@ -84,7 +113,7 @@ class HouseholdPostgresTests(unittest.TestCase):
             with self.assertRaises(AccessDenied):
                 repository.read()
             with self.assertRaises(AccessDenied):
-                repository.save_settings(['Indian'], 45, 60, 1)
+                repository.save_settings(['Indian'], 'simple', 'small', [], 1)
         self.assertEqual(self.other.read().version, 1)
 
     def test_raw_database_queries_are_scoped_by_rls(self):
@@ -111,12 +140,12 @@ class HouseholdPostgresTests(unittest.TestCase):
 
     def test_stale_session_cannot_overwrite_newer_preferences(self):
         first, stale = HouseholdService(self.repo), HouseholdService(self.repo)
-        first.save_settings(['Indian'], 45, 60)
+        first.save_settings(['Indian'], 'simple', 'small', [])
         with self.assertRaises(ConcurrentChange):
-            stale.save_settings(['Mexican'], 90, 90)
+            stale.save_settings(['Mexican'], 'flexible', 'larger', ['Friday'])
         self.assertEqual(self.repo.read().cuisines, ['Indian'])
         stale.refresh()
-        stale.save_settings(['Mexican'], 45, 60)
+        stale.save_settings(['Mexican'], 'simple', 'small', [])
         self.assertEqual(self.repo.read().cuisines, ['Mexican'])
 
     def test_failed_stock_transaction_rolls_back_deletion_and_version(self):
@@ -142,14 +171,14 @@ class HouseholdPostgresTests(unittest.TestCase):
         def interleaved_save(member, expected_version):
             version = original_save(member, expected_version)
             # Another editor commits between this save and its UI response.
-            self.repo.save_settings(['Mexican'], 45, 60, version)
+            self.repo.save_settings(['Mexican'], 'simple', 'small', [], version)
             return version
 
         with patch.object(self.repo, 'save_member', side_effect=interleaved_save):
             service.add_member('Alex')
         self.assertEqual(service.household_version, 2)
         with self.assertRaises(ConcurrentChange):
-            service.save_settings(['Indian'], 45, 60)
+            service.save_settings(['Indian'], 'simple', 'small', [])
         self.assertEqual(self.repo.read().cuisines, ['Mexican'])
 
     def remove_failure_trigger(self):
@@ -171,6 +200,69 @@ class HouseholdPostgresTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.confirm_sample_receipt(service.receipt_items)
         self.assertEqual(self.repo.read().inventory, [])
+
+
+    def test_recipe_revisions_and_food_snapshots_survive_new_services(self):
+        service = HouseholdService(self.repo)
+        recipe = service.recipe_library.save(example_recipe())
+        first = calculate_recipe(recipe)['totals']
+        document = dict(recipe, name='Updated household bowl')
+        document['ingredients'] = [dict(line, quantity=line['quantity'] * 2) for line in recipe['ingredients']]
+        updated = service.recipe_library.save(document)
+        source = dict(recipe['ingredients'][0]['food'])
+        source['nutrients'] = dict(source['nutrients'], kcal=999)
+        service.recipe_library.save_food(source)
+        reopened = HouseholdService(self.repo)
+        self.assertEqual(reopened.recipe_library.recipes[recipe['id']]['revision'], 2)
+        revisions = reopened.recipe_library.revisions(recipe['id'])
+        self.assertEqual(len(revisions), 2)
+        self.assertEqual(calculate_recipe(revisions[0])['totals'], first)
+        self.assertAlmostEqual(calculate_recipe(updated)['totals']['kcal'], first['kcal'] * 2)
+        self.assertEqual(reopened.recipe_library.foods[source['id']]['nutrients']['kcal'], 999)
+        self.assertEqual(HouseholdService(self.other).recipe_library.recipes, {})
+
+    def test_recipe_writes_are_versioned_and_cross_household_scoped(self):
+        first, stale = HouseholdService(self.repo), HouseholdService(self.repo)
+        saved = first.recipe_library.save(example_recipe())
+        with self.assertRaises(ConcurrentChange):
+            stale.recipe_library.save(example_recipe())
+        forged = RecipeRepository(HouseholdRepository(Database(self.app_conninfo), EditorContext(self.b, 'alice')))
+        self.assertEqual(forged.read(), ({}, {}))
+        with self.assertRaises(AccessDenied):
+            forged.save(example_recipe(), 1)
+        with Database(self.app_conninfo).transaction(EditorContext(self.b, 'bob')) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM menuagent.recipe_versions').fetchone()['n'], 0)
+        self.assertEqual(first.recipe_library.recipes[saved['id']]['revision'], 1)
+
+    def test_recipe_revision_cannot_be_mutated_by_application_role(self):
+        service = HouseholdService(self.repo)
+        recipe = service.recipe_library.save(example_recipe())
+        with self.assertRaises(StorageUnavailable):
+            with Database(self.app_conninfo).transaction(self.context) as conn:
+                conn.execute("UPDATE menuagent.recipe_versions SET document = '{}'::jsonb WHERE recipe_id = %s", (recipe['id'],))
+        self.assertEqual(service.recipe_library.revisions(recipe['id'])[0]['name'], recipe['name'])
+
+    def test_recipe_editor_and_portion_calculator_survive_new_sessions(self):
+        with self.ui_environment():
+            app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            app.switch_page('application/ui/pages/recipes.py').run()
+            self.button(app, 'Load example into editor').click().run()
+            self.button(app, 'Save recipe').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            saved = HouseholdService(self.repo).recipe_library.recipes
+            self.assertEqual(len(saved), 1)
+            reopened = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            reopened.switch_page('application/ui/pages/recipes.py').run()
+            self.assertFalse(reopened.exception)
+            self.assertTrue(any(item.value == '1034.4 kcal' for item in reopened.metric))
+            self.assertTrue(any(item.value == '258.6 kcal' for item in reopened.metric))
+            next(item for item in reopened.selectbox if item.label == 'Recipe to edit').select(next(iter(saved))).run()
+            next(item for item in reopened.text_input if item.label == 'Recipe name').input('Our chickpea bowl')
+            self.button(reopened, 'Save recipe').click().run()
+            self.assertFalse(reopened.exception)
+            self.assertFalse(reopened.error)
+            self.assertEqual(HouseholdService(self.repo).recipe_library.recipes[next(iter(saved))]['revision'], 2)
 
     def ui_environment(self):
         return patch.dict(os.environ, {'MENUAGENT_MODE': 'postgres', 'MENUAGENT_DATABASE_URL': self.app_conninfo,
@@ -200,8 +292,9 @@ class HouseholdPostgresTests(unittest.TestCase):
                 next(item for item in app.number_input if item.label == label).set_value(value)
             self.button(app, 'Save member profile').click().run()
             next(item for item in app.multiselect if item.label == 'Usual cuisines').select('Indian')
-            next(item for item in app.number_input if item.label == 'Daily active cooking budget (min)').set_value(45)
-            next(item for item in app.number_input if item.label == 'Sunday batch preparation budget (min)').set_value(60)
+            next(item for item in app.selectbox if item.label == 'Usual cooking effort').select('assembly')
+            next(item for item in app.selectbox if item.label == 'Weekly meal-prep preference').select('none')
+            next(item for item in app.multiselect if item.label == 'Usually busier days').select('Tuesday').select('Thursday')
             self.button(app, 'Save shared preferences').click().run()
             self.assertFalse(app.exception)
             reopened = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
@@ -210,6 +303,14 @@ class HouseholdPostgresTests(unittest.TestCase):
             self.assertEqual(next(item.value for item in reopened.text_input if item.label == 'Name'), 'Alex')
             self.assertEqual(next(item.value for item in reopened.number_input if item.label == 'Protein (g/day)'), 125.0)
             self.assertEqual(reopened.multiselect[0].value, ['Indian'])
+            self.assertEqual(next(item.value for item in reopened.selectbox if item.label == 'Usual cooking effort'), 'assembly')
+            self.assertEqual(next(item.value for item in reopened.selectbox if item.label == 'Weekly meal-prep preference'), 'none')
+            self.assertEqual(next(item.value for item in reopened.multiselect if item.label == 'Usually busier days'), ['Tuesday', 'Thursday'])
+            reopened.switch_page('application/ui/pages/week.py').run()
+            next(item for item in reopened.selectbox if item.label == 'Choose a day').select(1).run()
+            self.assertFalse(reopened.exception)
+            self.assertTrue(any('sample menu has not been adapted' in item.value for item in reopened.info))
+            self.assertFalse(any('within budget' in item.value for item in reopened.markdown))
 
     def test_editor_revoke_blocks_rerun_before_displaying_profiles(self):
         service = HouseholdService(self.repo)
@@ -222,6 +323,38 @@ class HouseholdPostgresTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertTrue(any('does not have access' in item.value for item in app.error))
             self.assertFalse(app.text_input)
+
+    def test_week_overview_busy_days_save_and_sync_with_household(self):
+        service = HouseholdService(self.repo)
+        service.save_settings(['Indian'], 'simple', 'none', [])
+        with self.ui_environment():
+            app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            # Visit Household first to reproduce a previously rendered form.
+            app.switch_page('application/ui/pages/household.py').run()
+            app.switch_page('application/ui/pages/week.py').run()
+            next(item for item in app.radio if item.label == 'Menu layout').set_value('Week overview').run()
+            before_slots = [(slot.recipe_id, slot.locked) for slot in app.session_state['_household_service'].slots]
+            key = 'profile-busy-days-editor-2026-10-12-'
+            app.session_state[key] = {'edited_rows': {0: {'Busier day': True}, 4: {'Busier day': True}},
+                                      'deleted_rows': [], 'added_rows': []}
+            self.button(app, 'Save busier days').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            saved = self.repo.read()
+            self.assertEqual(saved.busy_days, ['Monday', 'Friday'])
+            self.assertEqual((saved.cuisines, saved.cooking_effort, saved.meal_prep), (['Indian'], 'simple', 'none'))
+            self.assertEqual(before_slots, [(slot.recipe_id, slot.locked) for slot in app.session_state['_household_service'].slots])
+            app.switch_page('application/ui/pages/household.py').run()
+            self.assertEqual(next(item.value for item in app.multiselect if item.label == 'Usually busier days'), ['Monday', 'Friday'])
+            reopened = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            self.assertEqual(reopened.session_state['_household_service'].busy_days, ['Monday', 'Friday'])
+            # Unticking saved days must persist too.
+            next(item for item in reopened.radio if item.label == 'Menu layout').set_value('Week overview').run()
+            reopened.session_state[key + 'Monday-Friday'] = {'edited_rows': {0: {'Busier day': False}, 4: {'Busier day': False}},
+                                                            'deleted_rows': [], 'added_rows': []}
+            self.button(reopened, 'Save busier days').click().run()
+            self.assertFalse(reopened.exception)
+            self.assertEqual(self.repo.read().busy_days, [])
 
     def test_stock_editor_writes_survive_a_new_ui_session(self):
         with self.ui_environment():

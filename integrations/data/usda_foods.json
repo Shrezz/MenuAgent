@@ -1,0 +1,188 @@
+[
+  {
+    "id": "fdc:173757",
+    "fdc_id": 173757,
+    "name": "Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, without salt",
+    "state": "cooked",
+    "aliases": [
+      "chickpeas",
+      "garbanzo beans"
+    ],
+    "nutrients": {
+      "kcal": 164.0,
+      "protein": 8.86,
+      "carbs": 27.4,
+      "fat": 2.59
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/173757/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.720080+00:00",
+    "source_hash": "3b6bb29f7071663558db6df9d68d8150559e336e30075f878622713f590e6a95",
+    "data_type": "SR Legacy",
+    "canonical_name": "chickpeas"
+  },
+  {
+    "id": "fdc:173756",
+    "fdc_id": 173756,
+    "name": "Chickpeas (garbanzo beans, bengal gram), mature seeds, raw",
+    "state": "raw",
+    "aliases": [
+      "chickpeas",
+      "garbanzo beans"
+    ],
+    "nutrients": {
+      "kcal": 378.0,
+      "protein": 20.5,
+      "carbs": 63.0,
+      "fat": 6.04
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/173756/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.720360+00:00",
+    "source_hash": "f4de6b9141224d2ca59a3028341a0496324c41303f4b125dfeeb72cc10de6ddf",
+    "data_type": "SR Legacy",
+    "canonical_name": "chickpeas"
+  },
+  {
+    "id": "fdc:171284",
+    "fdc_id": 171284,
+    "name": "Yogurt, plain, whole milk",
+    "state": "as sold",
+    "aliases": [
+      "yogurt",
+      "plain yogurt"
+    ],
+    "nutrients": {
+      "kcal": 61.0,
+      "protein": 3.47,
+      "carbs": 4.66,
+      "fat": 3.25
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/171284/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.720553+00:00",
+    "source_hash": "6d6ec7136a57fbff21e8f8a6fc62bb83e0b39ab216859f2014209929236bb18f",
+    "data_type": "SR Legacy",
+    "canonical_name": "yogurt"
+  },
+  {
+    "id": "fdc:168878",
+    "fdc_id": 168878,
+    "name": "Rice, white, long-grain, regular, enriched, cooked",
+    "state": "cooked",
+    "aliases": [
+      "rice",
+      "white rice"
+    ],
+    "nutrients": {
+      "kcal": 130.0,
+      "protein": 2.69,
+      "carbs": 28.2,
+      "fat": 0.28
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/168878/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.720697+00:00",
+    "source_hash": "3edfa108a7503e73e845261878adc3f6c9d1bf9a77504a9aa73759e28bd647fe",
+    "data_type": "SR Legacy",
+    "canonical_name": "rice"
+  },
+  {
+    "id": "fdc:171413",
+    "fdc_id": 171413,
+    "name": "Oil, olive, salad or cooking",
+    "state": "as sold",
+    "aliases": [
+      "olive oil"
+    ],
+    "nutrients": {
+      "kcal": 884.0,
+      "protein": 0.0,
+      "carbs": 0.0,
+      "fat": 100.0
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/171413/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.720825+00:00",
+    "source_hash": "aecb7685ecd669cce81c1a41d873dc2ce9ec9612ac9ccc520bb617ce98b623fe",
+    "data_type": "SR Legacy",
+    "canonical_name": "olive oil"
+  },
+  {
+    "id": "fdc:168462",
+    "fdc_id": 168462,
+    "name": "Spinach, raw",
+    "state": "raw",
+    "aliases": [
+      "spinach"
+    ],
+    "nutrients": {
+      "kcal": 23.0,
+      "protein": 2.86,
+      "carbs": 3.63,
+      "fat": 0.39
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/168462/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.721003+00:00",
+    "source_hash": "cd1002708d4af32297574ffc8e97ee2ead4b3fc63e9d426d52712c53bab98821",
+    "data_type": "SR Legacy",
+    "canonical_name": "spinach"
+  },
+  {
+    "id": "fdc:170393",
+    "fdc_id": 170393,
+    "name": "Carrots, raw",
+    "state": "raw",
+    "aliases": [
+      "carrot",
+      "carrots"
+    ],
+    "nutrients": {
+      "kcal": 41.0,
+      "protein": 0.93,
+      "carbs": 9.58,
+      "fat": 0.24
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/170393/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.721147+00:00",
+    "source_hash": "a3f7d917cbf3458004a71f1913321d6f31e8fe5f5a08768cf5932a922a8abf3f",
+    "data_type": "SR Legacy",
+    "canonical_name": "carrot"
+  },
+  {
+    "id": "fdc:168202",
+    "fdc_id": 168202,
+    "name": "Apples, raw, golden delicious, with skin",
+    "state": "raw",
+    "aliases": [
+      "apple",
+      "apples"
+    ],
+    "nutrients": {
+      "kcal": 57.0,
+      "protein": 0.28,
+      "carbs": 13.6,
+      "fat": 0.15
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/168202/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.721374+00:00",
+    "source_hash": "6b654e17c2823c0ef6c0c68ce12bfdcac60f8fe393167350a1bcc57d5991b322",
+    "data_type": "SR Legacy",
+    "canonical_name": "apple"
+  },
+  {
+    "id": "fdc:168872",
+    "fdc_id": 168872,
+    "name": "Oat bran, raw",
+    "state": "raw",
+    "aliases": [
+      "oat bran"
+    ],
+    "nutrients": {
+      "kcal": 246.0,
+      "protein": 17.3,
+      "carbs": 66.2,
+      "fat": 7.03
+    },
+    "source_url": "https://fdc.nal.usda.gov/food-details/168872/nutrients",
+    "retrieved_at": "2026-10-10T00:12:34.721520+00:00",
+    "source_hash": "3b1250aa02c466a9d662801f7b099b720f85c0301bce2963e35df1b01225bf35",
+    "data_type": "SR Legacy",
+    "canonical_name": "oat bran"
+  }
+]

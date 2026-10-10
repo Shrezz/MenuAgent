@@ -39,7 +39,7 @@ with st.sidebar:
     st.divider()
     if demo.persistent:
         st.caption(demo.household_name)
-        st.caption("Profiles, preferences and kitchen stock are saved. Menus and recipes remain sample previews.")
+        st.caption("Profiles, preferences, kitchen stock and recipes are saved. Weekly menus and history remain sample previews.")
         if st.button("Reload saved household", width="stretch"):
             try:
                 demo.refresh()

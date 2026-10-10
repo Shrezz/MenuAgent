@@ -1,7 +1,6 @@
 # MenuAgent plan history
 
-plan-v1.MD preserves the original MVP handoff as version 1. It matches the project root plan.MD at initialization.
+- plan-v1.MD preserves the original October 8 MVP handoff, unchanged.
+- plan-v2.MD records the October 9 agreed revision: cooking effort, meal-prep preferences and busier days replace mandatory cooking-minute budgets. Put and forget recipes are deferred to phase 2.
 
-Keep archived versions unchanged. For a future agreed scope revision, update the working plan.MD, increment its version, and save the new baseline here as plan-v2.MD or the next version.
-
-UI preview implementation notes and framework recommendations belong in README.md and docs, so the original product baseline remains intact.
+The working root plan.MD currently matches plan-v2.MD. Keep archived versions unchanged; save a new numbered baseline for future agreed scope revisions.

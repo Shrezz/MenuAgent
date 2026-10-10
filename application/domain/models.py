@@ -1,4 +1,4 @@
-"""UI and household records. Sourced recipe quantities and nutrition arrive next."""
+"""Household and legacy menu-preview records; structured recipes live in recipes.py."""
 from dataclasses import dataclass, field
 
 MEAL_TYPES = ("Breakfast", "Lunch", "Dinner", "Snack")

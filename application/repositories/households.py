@@ -14,8 +14,9 @@ class HouseholdSnapshot:
     name: str
     version: int
     cuisines: list[str]
-    daily_minutes: int | None
-    batch_minutes: int | None
+    cooking_effort: str | None
+    meal_prep: str | None
+    busy_days: list[str]
     members: list[Member]
     inventory: list[dict]
 
@@ -31,7 +32,7 @@ class HouseholdRepository:
                 raise AccessDenied("This editor does not have access to the configured household.")
             members = conn.execute("SELECT * FROM menuagent.members WHERE household_id = %s ORDER BY name, id", (self.context.household_id,)).fetchall()
             inventory = conn.execute("SELECT * FROM menuagent.inventory_items WHERE household_id = %s ORDER BY position", (self.context.household_id,)).fetchall()
-        return HouseholdSnapshot(household['name'], household['version'], household['cuisines'], household['daily_minutes'], household['batch_minutes'],
+        return HouseholdSnapshot(household['name'], household['version'], household['cuisines'], household['cooking_effort'], household['meal_prep'], household['busy_days'],
             [Member(str(row['id']), row['name'], row['kind'], row['age_group'], row['targets'], row['dislikes'], row['restrictions']) for row in members],
             [{"Item": row['name'], "Location": row['location'], "Quantity": row['quantity'], "Unit": row['unit'], "Status": row['status']} for row in inventory])
 
@@ -57,12 +58,12 @@ class HouseholdRepository:
                  Jsonb(member.targets) if member.targets is not None else None, member.dislikes, member.restrictions))
         return version
 
-    def save_settings(self, cuisines, daily_minutes, batch_minutes, expected_version: int):
-        cuisines, daily_minutes, batch_minutes = clean_settings(cuisines, daily_minutes, batch_minutes)
+    def save_settings(self, cuisines, cooking_effort, meal_prep, busy_days, expected_version: int):
+        cuisines, cooking_effort, meal_prep, busy_days = clean_settings(cuisines, cooking_effort, meal_prep, busy_days)
         with self.database.transaction(self.context) as conn:
             version = self._advance(conn, expected_version)
-            conn.execute("UPDATE menuagent.households SET cuisines = %s, daily_minutes = %s, batch_minutes = %s WHERE id = %s",
-                         (cuisines, daily_minutes, batch_minutes, self.context.household_id))
+            conn.execute("UPDATE menuagent.households SET cuisines = %s, cooking_effort = %s, meal_prep = %s, busy_days = %s WHERE id = %s",
+                         (cuisines, cooking_effort, meal_prep, busy_days, self.context.household_id))
         return version
 
     def save_inventory(self, rows, expected_version: int):

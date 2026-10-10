@@ -5,3 +5,5 @@ The UI preview uses the application demo service. The real agent will run in a w
 Implement recipe selection and bounded tool use here. Keep Streamlit imports in application/ui. Nutrition arithmetic, inventory allocation and required-rule validation belong in application/domain. The application owns finalization and actual stock changes.
 
 The next agent modules are runtime.py, state.py, and tools/registry.py. Add them when the corresponding integrations and calculation services are implemented.
+
+The recipe library and deterministic calculation/validation tools are implemented. runtime.py, state.py and a trusted tool registry are the next milestone. See docs/recipes-and-nutrition.md for candidate inputs, source snapshots and unresolved review requirements.

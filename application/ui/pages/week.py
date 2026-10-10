@@ -1,7 +1,9 @@
 from datetime import timedelta
 import streamlit as st
 from application.domain.models import MEAL_TYPES
-from application.ui.components import page_heading, service, show_preview_checks
+from application.domain.households import COOKING_EFFORTS, MEAL_PREP_PREFERENCES
+from application.ui.components import page_heading, records, service, show_preview_checks
+from database.connection import StorageUnavailable
 
 demo = service()
 end = demo.week_start + timedelta(days=6)
@@ -23,14 +25,36 @@ with menu_tab:
         overview = [
             {"Day": (demo.week_start + timedelta(days=day)).strftime("%a %d"),
              **{slot.meal_type: demo.recipes[slot.recipe_id].name for _, slot in demo.day_slots(day)},
-             "Active min": demo.active_minutes(day)}
+             "Busier day": (demo.week_start + timedelta(days=day)).strftime("%A") in demo.busy_days,
+             "Estimated active min": demo.active_minutes(day)}
             for day in range(7)
         ]
-        st.dataframe(overview, width="stretch", hide_index=True)
+        st.caption("Tick Busier day for days when you prefer easy recipes, then save. This updates your usual weekdays across future weeks.")
+        with st.form("week-busy-days"):
+            edited_overview = st.data_editor(
+                overview, width="stretch", hide_index=True,
+                disabled=[column for column in overview[0] if column != "Busier day"],
+                column_config={"Busier day": st.column_config.CheckboxColumn("Busier day", help="Prefer fewer steps and less hands-on work.")},
+                key=f"profile-busy-days-editor-{demo.week_start.isoformat()}-{'-'.join(demo.busy_days)}",
+            )
+            save_busy_days = st.form_submit_button("Save busier days")
+        if save_busy_days:
+            chosen_days = [(demo.week_start + timedelta(days=index)).strftime("%A")
+                           for index, row in enumerate(records(edited_overview)) if row["Busier day"]]
+            try:
+                demo.save_settings(demo.cuisines, demo.cooking_effort, demo.meal_prep, chosen_days)
+                # The Household form must pick up changes made from this page.
+                st.session_state.pop("profile-shared-busy", None)
+                st.success("Busier weekdays saved. Sample recipes remain unchanged until the planner is implemented.")
+            except (ValueError, StorageUnavailable) as error:
+                st.error(str(error))
     day = st.selectbox("Choose a day", list(range(7)),
                        format_func=lambda value: (demo.week_start + timedelta(days=value)).strftime("%A, %B %d"))
-    budget = f"{demo.daily_minutes} min daily budget" if demo.daily_minutes is not None else "Set a daily budget in Household"
-    st.caption(f"{demo.active_minutes(day)} min estimated active work · {budget}")
+    is_busy = (demo.week_start + timedelta(days=day)).strftime("%A") in demo.busy_days
+    effort = "Easy recipes preferred on this busier day" if is_busy else COOKING_EFFORTS.get(demo.cooking_effort, "Cooking effort not set")
+    st.caption(f"{effort} · {demo.active_minutes(day)} min illustrative estimate; your cooking time may differ.")
+    if is_busy:
+        st.info("The future planner will favor fewer steps and less hands-on work on this day. This sample menu has not been adapted.")
     pairs = demo.day_slots(day)
     for start in (0, 2):
         columns = st.columns(2)
@@ -39,7 +63,7 @@ with menu_tab:
             with column, st.container(border=True):
                 st.caption(f"{slot.meal_type.upper()} · {recipe.cuisine}")
                 st.subheader(recipe.name)
-                st.caption(f"{recipe.active_minutes} min active · same dish for the household")
+                st.caption(f"{recipe.active_minutes} min estimated active work · same dish for the household")
                 if recipe.prep_component:
                     st.write(f"Uses prepared **{recipe.prep_component.lower()}**")
                 else:
@@ -100,8 +124,8 @@ with prep_tab:
         {"Prepare": "Tomato-onion base", "Active min": 18, "Uses": "Dal; rajma; freeze surplus"},
         {"Prepare": "Chopped vegetables", "Active min": 10, "Uses": "Wraps; stir-fry; khichdi"},
     ], hide_index=True, width="stretch")
-    batch_budget = f"{demo.batch_minutes} min available" if demo.batch_minutes is not None else "batch budget not set"
-    st.write(f"**Sunday before the week begins:** 40 min sample active preparation / {batch_budget}")
+    st.write(f"**Your meal-prep preference:** {MEAL_PREP_PREFERENCES.get(demo.meal_prep, 'Not set')}")
+    st.caption("These are sample tasks. The future planner will adapt prep suggestions to your preference, including no prep.")
     st.subheader("Freezer suggestions")
     st.write("Set aside surplus tomato-onion base for another week.")
     st.caption("Storage instructions and batch quantities will be linked to recipe details.")

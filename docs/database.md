@@ -1,6 +1,6 @@
 # Household persistence
 
-The app persists household members, preferences and manual inventory in PostgreSQL. Sample menus, recipes and history remain preview data until their own milestones. New database households start empty.
+The app persists household members, preferences and manual inventory in PostgreSQL. Structured recipes and source-food cache entries now persist too. Weekly menus and history remain preview data until their own milestones. New database households start empty.
 
 ## Local database
 
@@ -40,7 +40,9 @@ python -m database.manage migrate --app-role menuagent_app
 python -m database.manage bootstrap --name 'My household' --editor-subject local-editor
 ```
 
-Bootstrap prints the new household UUID for server configuration. Migrations use transactions, advisory locking and checksums. Do not edit an applied migration; add a numbered SQL migration. Repeat provisioning does not reset records.
+Bootstrap prints the new household UUID for server configuration. Migrations use transactions, advisory locking and checksums. Do not edit an applied migration; add a numbered SQL migration. Migration 002 adds nullable cooking-effort/meal-prep choices and recurring busy days. Historical minute budgets remain stored but are no longer read or enforced; no effort preference is guessed from them. Repeat provisioning does not reset records.
+
+Migration 003 adds recipe_versions and food_sources, with the same household/editor row policies. Recipes are insert-only immutable revisions for the app role; source cache updates do not rewrite saved recipe snapshots.
 
 editor_access is administrator-provisioned. The application can read its editor's memberships but cannot grant access. Members and stock have household-scoped keys; queries filter by household and PostgreSQL enforces household/editor row policies. Transaction-local settings clear when connections close. Runtime uses short-lived connections and rejects superuser/RLS bypass roles.
 

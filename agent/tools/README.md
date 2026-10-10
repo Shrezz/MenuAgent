@@ -19,3 +19,5 @@ Tool contracts are listed in plan.MD. Implement small typed functions around app
 - save_weekly_menu
 
 The runtime injects trusted household and snapshot context. Return structured data, issues, provenance and input versions. Write tools require idempotency and expected-version checks. Profile editing and menu finalization remain application operations.
+
+Implemented in calculations.py: calculate_nutrition and validate_menu, backed by pure domain functions. Their explicit candidate/portion/stock contracts and current review boundaries are documented in docs/recipes-and-nutrition.md. Other tools remain pending.

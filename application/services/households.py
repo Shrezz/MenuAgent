@@ -21,7 +21,9 @@ class HouseholdService(DemoService):
         self.household_version = snapshot.version
         self.members, self.inventory = snapshot.members, snapshot.inventory
         self.cuisines = snapshot.cuisines
-        self.daily_minutes, self.batch_minutes = snapshot.daily_minutes, snapshot.batch_minutes
+        self.cooking_effort, self.meal_prep, self.busy_days = snapshot.cooking_effort, snapshot.meal_prep, snapshot.busy_days
+        if hasattr(self, "_recipe_library"):
+            self._recipe_library.refresh()
 
     def add_member(self, name, kind="Adult", age_group=""):
         self.save_member(Member(str(uuid4()), name, kind, age_group))
@@ -34,10 +36,10 @@ class HouseholdService(DemoService):
         super().save_member(member)
         self.household_version = version
 
-    def save_settings(self, cuisines, daily_minutes, batch_minutes):
-        cuisines, daily_minutes, batch_minutes = clean_settings(cuisines, daily_minutes, batch_minutes)
-        version = self.repository.save_settings(cuisines, daily_minutes, batch_minutes, self.household_version)
-        self.cuisines, self.daily_minutes, self.batch_minutes = cuisines, daily_minutes, batch_minutes
+    def save_settings(self, cuisines, cooking_effort, meal_prep, busy_days):
+        cuisines, cooking_effort, meal_prep, busy_days = clean_settings(cuisines, cooking_effort, meal_prep, busy_days)
+        version = self.repository.save_settings(cuisines, cooking_effort, meal_prep, busy_days, self.household_version)
+        self.cuisines, self.cooking_effort, self.meal_prep, self.busy_days = cuisines, cooking_effort, meal_prep, busy_days
         self.household_version = version
 
     def save_inventory(self, rows):

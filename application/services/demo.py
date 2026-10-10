@@ -76,8 +76,9 @@ class DemoService:
         self.week_start = date(2026, 10, 12)
         self.revision = 1
         self.status = "Draft preview"
-        self.daily_minutes = 45
-        self.batch_minutes = 60
+        self.cooking_effort = "simple"
+        self.meal_prep = "small"
+        self.busy_days = []
         self.cuisines = ["Indian", "Mediterranean", "Mexican"]
         self.members = [
             Member("adult-a", "Adult A", targets={"kcal": 2000.0, "protein": 120.0, "carbs": 230.0, "fat": 65.0}),
@@ -119,7 +120,6 @@ class DemoService:
         return {
             "All 28 meal slots filled": len(self.slots) == 28 and expected == actual,
             "No repeated finished dishes": len(set(recipe_ids)) == len(recipe_ids),
-            "Daily active time within budget": self.daily_minutes is not None and all(self.active_minutes(day) <= self.daily_minutes for day in range(7)),
         }
 
     def alternatives(self, slot_index):
@@ -190,8 +190,8 @@ class DemoService:
         else:
             self.members[index] = cleaned
 
-    def save_settings(self, cuisines, daily_minutes, batch_minutes):
-        self.cuisines, self.daily_minutes, self.batch_minutes = clean_settings(cuisines, daily_minutes, batch_minutes)
+    def save_settings(self, cuisines, cooking_effort, meal_prep, busy_days):
+        self.cuisines, self.cooking_effort, self.meal_prep, self.busy_days = clean_settings(cuisines, cooking_effort, meal_prep, busy_days)
 
     def save_inventory(self, rows):
         self.inventory = clean_inventory(rows)
@@ -216,3 +216,10 @@ class DemoService:
         self.inventory = updated
         self.confirmed_receipts.add(receipt_id)
         return True
+
+    @property
+    def recipe_library(self):
+        from application.services.recipes import RecipeLibrary
+        if not hasattr(self, '_recipe_library'):
+            self._recipe_library = RecipeLibrary(self)
+        return self._recipe_library
