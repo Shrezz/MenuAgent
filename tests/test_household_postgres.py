@@ -25,6 +25,12 @@ from application.repositories.receipts import ReceiptRepository
 from application.domain.receipts import receipt_hash, extraction_rows
 from test_receipts import receipt_image, receipt_result
 from io import BytesIO
+from copy import deepcopy
+from datetime import date
+from agent.runtime import PlanningAgent, clean_proposal
+from application.repositories.menus import MenuRepository, PlanningCancelled
+from workers.planning import run_job
+from test_planning import FakePlanningModel, planning_fixture, proposed_menu, web_source
 
 ENABLED = bool(os.environ.get('MENUAGENT_TEST_ADMIN_DATABASE_URL') and os.environ.get('MENUAGENT_TEST_DATABASE_URL'))
 APP_PATH = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
@@ -55,6 +61,9 @@ class HouseholdPostgresTests(unittest.TestCase):
             conn.execute(sql.SQL('DROP DATABASE {} WITH (FORCE)').format(sql.Identifier(cls.database_name)))
 
     def setUp(self):
+        dispatch_patch = patch('application.services.menus.dispatch')
+        dispatch_patch.start()
+        self.addCleanup(dispatch_patch.stop)
         self.a, self.b = str(uuid4()), str(uuid4())
         bootstrap_household(self.admin, self.a, 'Household A', 'alice')
         bootstrap_household(self.admin, self.b, 'Household B', 'bob')
@@ -66,7 +75,194 @@ class HouseholdPostgresTests(unittest.TestCase):
         migrate(self.admin)
         with psycopg.connect(self.admin) as conn:
             count = conn.execute('SELECT count(*) FROM menuagent.schema_migrations').fetchone()[0]
-        self.assertEqual(count, 4)
+        self.assertEqual(count, 5)
+
+    def planning_household(self):
+        service = HouseholdService(self.repo)
+        service.add_member('Alex')
+        fixture = planning_fixture(service.members[0].id)
+        for recipe in fixture['recipes'].values():
+            service.recipe_library.save(dict(recipe,restriction_reviewed=True))
+        service.save_inventory(fixture['inventory'])
+        service.save_settings(['South Indian'],'simple','none',['Monday'])
+        return service,fixture['options']
+
+    def test_planning_jobs_are_idempotent_and_snapshots_immutable(self):
+        service,options = self.planning_household()
+        repo = MenuRepository(self.repo)
+        job = repo.start('2026-10-12',service.household_version,options,source_event='receipt-event')
+        repeated = repo.start('2026-10-12',service.household_version,options,source_event='receipt-event')
+        self.assertEqual(job,repeated)
+        self.assertEqual(len(repo.list()),1)
+        original = repo.claim(job)
+        service.save_settings(['Indian'],'assembly','small',[])
+        self.assertEqual(original['settings']['cuisines'],['South Indian'])
+        self.assertEqual(len(original['recipes']),28)
+        with self.assertRaises(StorageUnavailable):
+            with Database(self.app_conninfo).transaction(self.context) as conn:
+                conn.execute("UPDATE menuagent.planning_jobs SET snapshot = '{}'::jsonb")
+        with self.assertRaises(ConcurrentChange):
+            repo.start('2026-10-12',original['input_version'],options)
+
+    def test_worker_saves_checked_week_and_new_session_retains_it(self):
+        service,options = self.planning_household()
+        repo = MenuRepository(self.repo)
+        before = self.repo.read()
+        job = repo.start('2026-10-12',service.household_version,options)
+        run_job(repo,job,PlanningAgent(model=FakePlanningModel()))
+        saved = MenuRepository(self.repo).candidate(job)
+        self.assertEqual(repo.list()[0]['status'],'draft_ready')
+        self.assertEqual(len(saved['menu']['meals']),28)
+        self.assertTrue(saved['report']['ready'])
+        self.assertEqual(saved['members'][0]['name'],'Alex')
+        self.assertAlmostEqual(saved['report']['daily_totals'][0]['totals']['kcal'],1034.4)
+        self.assertEqual(self.repo.read().inventory,before.inventory)
+        self.assertEqual(self.repo.read().version,before.version)
+        with self.ui_environment():
+            app = AppTest.from_file(str(APP_PATH),default_timeout=15).run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any('passed the implemented checks' in x.value for x in app.success))
+            app.switch_page('application/ui/pages/history.py').run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any('Saved automatic drafts' in x.value for x in app.subheader))
+
+    def test_retry_snapshot_retains_unreviewed_proposals_without_saving_library(self):
+        service = HouseholdService(self.repo)
+        service.add_member('Alex')
+        from application.services.menus import clean_options
+        options = clean_options({'web':False,'vegetarian':False})
+        repo = MenuRepository(self.repo)
+        job = repo.start('2026-10-12',service.household_version,options)
+        run_job(repo,job,PlanningAgent(model=FakePlanningModel()))
+        self.assertEqual(len(repo.candidate(job)['unreviewed_ids']),28)
+        self.assertEqual(RecipeRepository(self.repo).read()[0],{})
+        retry = repo.start('2026-10-12',service.household_version,options,force=True)
+        snapshot = repo.claim(retry)
+        self.assertEqual(len(snapshot['proposal_recipes']),28)
+        self.assertEqual(snapshot['recipes'],{})
+
+    def test_changed_inputs_cannot_produce_ready_job(self):
+        service,options = self.planning_household()
+        repo = MenuRepository(self.repo)
+        job = repo.start('2026-10-12',service.household_version,options)
+        def change_inputs(proposal,call):
+            if call == 1:
+                service.save_settings(['Indian'],'assembly','none',[])
+            return proposal
+        run_job(repo,job,PlanningAgent(model=FakePlanningModel(change_inputs)))
+        self.assertEqual(repo.list()[0]['status'],'needs_input')
+        self.assertFalse(repo.candidate(job)['report']['ready'])
+        self.assertIn('stale_inputs',[i['code'] for i in repo.candidate(job)['report']['issues']])
+
+    def test_cancelled_planning_cannot_save_a_candidate(self):
+        service,options = self.planning_household()
+        repo = MenuRepository(self.repo)
+        job = repo.start('2026-10-12',service.household_version,options)
+        already_saved = []
+        def cancel(proposal,call):
+            already_saved.append(repo.candidate(job)['menu']['version_id'])
+            repo.cancel(job)
+            return proposal
+        run_job(repo,job,PlanningAgent(model=FakePlanningModel(cancel)))
+        self.assertEqual(repo.list()[0]['status'],'cancelled')
+        self.assertEqual(repo.candidate(job)['menu']['version_id'],already_saved[0])
+        with Database(self.app_conninfo).transaction(self.context) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM menuagent.menu_candidates WHERE job_id = %s',(job,)).fetchone()['n'],1)
+        with self.assertRaises(PlanningCancelled):
+            repo.progress(job,'still running')
+
+        # Cancellation from another session must wait for an in-flight save;
+        # after it completes, neither saving nor finalizing may revive the job.
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+        from threading import Event
+        from agent.runtime import assess_candidate
+        entered, release = Event(), Event()
+        retry = repo.start('2026-10-12',service.household_version,options,force=True)
+        repo.claim(retry)
+        document = deepcopy(repo.candidate(job))
+        document['menu']['version_id'] = str(uuid4())
+        def paused_check(*args):
+            entered.set()
+            if not release.wait(10):
+                raise RuntimeError('Test did not release candidate validation.')
+            return assess_candidate(*args)
+        with patch('agent.runtime.assess_candidate',side_effect=paused_check), ThreadPoolExecutor(max_workers=2) as pool:
+            save = pool.submit(repo.save_candidate,retry,document)
+            try:
+                self.assertTrue(entered.wait(5))
+                cancellation = pool.submit(repo.cancel,retry)
+                with self.assertRaises(TimeoutError):
+                    cancellation.result(timeout=0.5)
+            finally:
+                release.set()
+            save.result(timeout=5)
+            cancellation.result(timeout=5)
+        self.assertEqual(repo.list()[0]['status'],'cancelled')
+        with self.assertRaises(PlanningCancelled):
+            repo.save_candidate(retry,document)
+        with self.assertRaises(PlanningCancelled):
+            repo.finish(retry,'draft_ready','Must not revive cancelled work')
+
+    def test_planning_records_are_scoped_and_candidate_reports_are_recomputed(self):
+        service,options = self.planning_household()
+        repo = MenuRepository(self.repo)
+        job = repo.start('2026-10-12',service.household_version,options)
+        snapshot = repo.claim(job)
+        menu = clean_proposal(proposed_menu(list(snapshot['recipes'].values()),snapshot['members']),snapshot['recipes'],snapshot['members'])
+        menu['meals'][-1]['recipe_id'] = menu['meals'][3]['recipe_id']
+        document = {'menu':menu,'recipes':deepcopy(snapshot['recipes']),'unreviewed_ids':[], 'report':{'ready':True},'model':'test-model','trace':[]}
+        saved = repo.save_candidate(job,document)
+        self.assertFalse(saved['report']['ready'])
+        with self.assertRaises(ValueError):
+            repo.finish(job,'draft_ready','Forged ready state')
+        self.assertIsNone(MenuRepository(self.other).candidate(job))
+        with Database(self.app_conninfo).transaction(EditorContext(self.b,'bob')) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM menuagent.menu_candidates').fetchone()['n'],0)
+        with self.assertRaises(StorageUnavailable):
+            with Database(self.app_conninfo).transaction(self.context) as conn:
+                conn.execute("UPDATE menuagent.menu_candidates SET document = '{}'::jsonb")
+        document['recipes'][menu['meals'][0]['recipe_id']]['name'] = 'Changed original snapshot'
+        with self.assertRaises(ValueError):
+            repo.save_candidate(job,document)
+
+    def test_generate_button_queues_job_and_updates_live_result(self):
+        service,_ = self.planning_household()
+        with self.ui_environment():
+            app = AppTest.from_file(str(APP_PATH),default_timeout=15).run()
+            next(x for x in app.checkbox if x.label == 'Find recipe sources online').uncheck()
+            next(x for x in app.checkbox if x.label == 'Vegetarian recipes').uncheck()
+            self.button(app,'Generate automatic menu').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            repo = MenuRepository(self.repo)
+            jobs = repo.list()
+            self.assertEqual(len(jobs),1)
+            self.assertEqual(jobs[0]['status'],'queued')
+            run_job(repo,jobs[0]['id'],PlanningAgent(model=FakePlanningModel()))
+            app.run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any('passed the implemented checks' in x.value for x in app.success))
+
+    def test_online_recipe_import_requires_review_before_library_save(self):
+        from integrations.recipe_web import RecipeWebClient
+        source = web_source()
+        with self.ui_environment(), patch.object(RecipeWebClient,'search',return_value=[{'title':source['title'],'url':source['url']}]), \
+             patch.object(RecipeWebClient,'read',return_value=source):
+            app = AppTest.from_file(str(APP_PATH),default_timeout=15).run()
+            app.switch_page('application/ui/pages/recipes.py').run()
+            self.button(app,'Search recipes online').click().run()
+            self.button(app,'Import recipe for review').click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(next(x.value for x in app.text_input if x.label == 'Recipe name'),source['title'])
+            self.assertEqual(RecipeRepository(self.repo).read()[0],{})
+            self.button(app,'Save recipe').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            saved = next(iter(RecipeRepository(self.repo).read()[0].values()))
+            self.assertEqual(saved['source_hash'],source['source_hash'])
+            self.assertFalse(saved['restriction_reviewed'])
+            self.assertIsNone(saved['ingredients'][1]['quantity'])
+            self.assertIsNone(saved['ingredients'][0]['food'])
 
     def test_receipt_confirmation_is_durable_atomic_and_once_only(self):
         service = HouseholdService(self.repo)
@@ -153,12 +349,14 @@ class HouseholdPostgresTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertFalse(app.error)
             self.assertEqual(self.repo.read().inventory[0]['Quantity'], 300)
+            self.assertEqual(len(MenuRepository(self.repo).list()),1)
             reopened = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
             reopened.switch_page('application/ui/pages/groceries.py').run()
             self.assertFalse(reopened.exception)
             self.assertTrue(self.button(reopened, 'Read receipt with Ollama').disabled)
             self.assertTrue(any('already confirmed' in message.value for message in reopened.success))
             self.assertEqual(read.call_count, 1)
+            self.assertEqual(len(MenuRepository(self.repo).list()),1)
 
     def test_upgrade_preserves_records_without_guessing_effort_from_minutes(self):
         name = 'menuagent_upgrade_' + uuid4().hex

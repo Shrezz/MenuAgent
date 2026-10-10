@@ -1,6 +1,6 @@
 # MenuAgent application and agent structure
 
-The project separates UI, domain validation, household persistence and the planning-agent boundary. PostgreSQL household/recipe persistence and source-backed calculations are implemented; the planning worker remains the next milestone.
+The project separates UI, domain validation, household persistence and the planning agent. PostgreSQL persistence, source-backed calculations, local automatic planning and South Indian vegetarian web discovery are implemented. Finalized-menu editing and inventory reservations remain future work.
 
     menuagent/
     ├── plan.MD                         Working MVP baseline, version 2
@@ -13,23 +13,26 @@ The project separates UI, domain validation, household persistence and the plann
     │   ├── ui/
     │   │   ├── components.py           Shared display helpers and service access
     │   │   ├── receipt_review.py       Real uploaded-image reading and review
+    │   │   ├── planning.py             Job progress, automatic drafts and recipe review
     │   │   └── pages/
     │   │       ├── week.py             Menu, portions, prep, freezer and shopping
     │   │       ├── groceries.py        Receipt review and stock editing
     │   │       ├── recipes.py          Search, categories and feedback
     │   │       ├── household.py        Individual profiles and shared settings
-    │   │       └── history.py          Saved preview versions
+    │   │       └── history.py          Stored automatic drafts and session previews
     │   ├── services/
     │   │   ├── demo.py                 Session-only UI service and sample fixtures
     │   │   ├── households.py           Durable household service with sample menu preview
     │   │   ├── receipts.py             Local extraction and reviewed purchase facade
     │   │   ├── recipes.py              Versioned recipe library facade
+    │   │   ├── menus.py                Planning options, queueing and worker dispatch
     │   │   └── recipe_examples.py      Optional original editor example
     │   ├── config.py                  Private backend configuration and mode selection
     │   ├── repositories/
     │   │   ├── households.py           Household-scoped transactions and version checks
     │   │   ├── receipts.py             Atomic confirmation and duplicate protection
-    │   │   └── recipes.py              Immutable recipe revisions and source cache
+    │   │   ├── recipes.py              Immutable recipe revisions and source cache
+    │   │   └── menus.py                Immutable snapshots/candidates and scoped jobs
     │   └── domain/
     │       ├── models.py               Framework-independent household/preview records
     │       ├── households.py           Profile, settings and inventory input validation
@@ -39,11 +42,15 @@ The project separates UI, domain validation, household persistence and the plann
     │       └── planning.py             Pure candidate validation and daily totals
     ├── agent/
     │   ├── contracts.py                Planning request, issue and result records
+    │   ├── runtime.py                  Retrieval, proposals, evaluation and bounded repair
+    │   ├── state.py                    Model, tool, fetch and elapsed budgets
     │   ├── README.md                   Agent boundary and implementation notes
     │   ├── prompts/planner.md          Planning instructions
     │   └── tools/                     Checklist and calculations.py tool facade
     ├── integrations/
     │   ├── ollama.py                   Local-only receipt vision adapter
+    │   ├── ollama_planner.py           Local structured text-model requests
+    │   ├── recipe_web.py               Publisher search, JSON-LD import and provenance
     │   ├── usda.py                     Reviewed USDA lookup and parsing
     │   └── data/                       Offline source snapshots and retained responses
     ├── database/
@@ -52,16 +59,19 @@ The project separates UI, domain validation, household persistence and the plann
     │   ├── migrations/002_cooking_preferences.sql  Effort, prep and busier days
     │   ├── migrations/003_recipe_library.sql  Recipes, sources and row policies
     │   ├── migrations/004_receipt_review.sql  Images, extraction and confirmation
+    │   ├── migrations/005_planning_jobs.sql  Job snapshots and immutable candidates
     │   ├── manage.py                  Migration and editor provisioning commands
     │   ├── local.py                   Local setup/start/stop/status commands
     │   ├── docker_local.py            Persistent isolated Docker database
     │   └── test.py                    Isolated PostgreSQL test-suite runner
-    ├── workers/                        Prepared directory for job execution
+    ├── workers/
+    │   └── planning.py                 Local background worker, cancellation and CLI
     ├── docs/
     │   ├── directory-structure.md
     │   ├── database.md                Setup, ownership and persistence boundaries
     │   ├── receipts-and-ollama.md       Local model choice and receipt contracts
     │   ├── recipes-and-nutrition.md    Editor, sources and calculation contracts
+    │   ├── automatic-planning.md       Application/agent loop, web sources and limits
     │   ├── framework-options.md
     │   ├── screenshots/               Captures from the running UI preview
     │   └── plans/
@@ -74,23 +84,24 @@ The project separates UI, domain validation, household persistence and the plann
         ├── test_household_validation.py  Shared input invariants
         ├── test_household_postgres.py  Real transactions, access and new-session UI checks
         ├── test_receipts.py             Model contracts and purchase quantities
-        └── test_recipe_calculations.py  Source/portion/full-week arithmetic fixtures
+        ├── test_recipe_calculations.py  Source/portion/full-week arithmetic fixtures
+        └── test_planning.py            Model repair, draft review and publisher contracts
 
-Planned modules for subsequent implementation:
+Implementation status and subsequent work:
 
 | Location | Responsibility |
 | --- | --- |
 | application/services/households.py | Implemented: profile persistence and household settings |
 | application/services/receipts.py | Implemented: local extraction, editable review and once-only purchase confirmation |
-| application/services/menus.py | Candidate edits, finalization and history |
+| application/services/menus.py | Implemented: automatic job queueing and stored drafts; candidate edits and finalization pending |
 | application/domain/nutrition.py | Implemented: sourced ingredient and portion arithmetic |
 | application/domain/inventory.py | Allocation, reservations and cooking events |
-| application/domain/validation.py | Restrictions, duplicates, workload and completeness |
-| application/repositories/ | Household, recipe and receipt repositories implemented; menu repository remains pending |
-| agent/runtime.py and agent/state.py | Bounded planning loop and candidate state |
-| agent/tools/registry.py | Tool registration and typed execution |
-| integrations/ | Local Ollama receipt extraction and USDA lookup implemented; recipe search/import and guidance pending |
-| workers/planning.py | Durable job lifecycle, retries, snapshots and cancellation |
-| database/migrations/ | Household schema implemented; subsequent milestones add numbered migrations |
+| application/domain/planning.py and agent/runtime.py | Implemented: restrictions, duplicates, workload, completeness and nutrient checks |
+| application/repositories/ | Household, recipe, receipt and planning repositories implemented |
+| agent/runtime.py and agent/state.py | Implemented: bounded evaluator/optimizer loop and retained best candidate |
+| agent/tools/registry.py | Optional future dynamic tool selection; current runtime uses explicit application calls |
+| integrations/ | Local Ollama receipt/planning, USDA lookup and publisher recipe search/import implemented; reviewed food guidance pending |
+| workers/planning.py | Implemented: durable local job lifecycle, snapshots, repair and cancellation; production supervision pending |
+| database/migrations/ | Migrations 001–005 implemented; later milestones add numbered migrations |
 
-For the first persistent version, Streamlit pages can call application services directly. The worker calls the same services through agent tools. Introduce a separate HTTP API when another frontend or independent deployment needs it.
+Streamlit pages call application services directly. The worker executes the bounded agent loop against application repositories and calculation functions. Introduce a separate HTTP API when another frontend or independent deployment needs it.

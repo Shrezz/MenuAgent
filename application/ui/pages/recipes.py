@@ -15,8 +15,33 @@ owner = service()
 library = owner.recipe_library
 page_heading('Familiar favorites, fresh ideas', 'Recipes', 'Save quantities and preparation steps, review source foods, and calculate household portions.')
 scope = 'in your household' if owner.persistent else 'for this session'
-st.caption('Saved recipes have their own ingredient and nutrition records. The weekly menu is still a separate sample preview.')
-collection, editor, sources = st.tabs(['Saved recipes & portions', 'Add or edit recipe', 'Source foods'])
+st.caption('Reviewed saved recipes feed automatic planning. New web imports and model proposals need quantity, source-food and dietary review.')
+collection, editor, sources, discovery = st.tabs(['Saved recipes & portions', 'Add or edit recipe', 'Source foods', 'Discover online'])
+
+with discovery:
+    from integrations.recipe_web import RecipeWebClient, RecipeWebUnavailable, source_to_draft
+    st.subheader('South Indian vegetarian recipes')
+    st.caption('Search Dassana’s vegetarian recipe collection, open the source and import a recipe into the editor for review.')
+    search = st.text_input('Web recipe search',value='south indian')
+    if st.button('Search recipes online'):
+        try:
+            st.session_state['web-recipe-results'] = RecipeWebClient().search(search)
+        except (ValueError,RecipeWebUnavailable) as error:
+            st.error(str(error))
+    results = st.session_state.get('web-recipe-results',[])
+    if results:
+        selected_source = st.selectbox('Online recipe',range(len(results)),format_func=lambda n:results[n]['title'])
+        chosen_source = results[selected_source]
+        st.link_button('Open selected recipe source',chosen_source['url'])
+        import_type = st.selectbox('Import as meal type',MEAL_TYPES)
+        if st.button('Import recipe for review'):
+            try:
+                source = RecipeWebClient().read(chosen_source['url'])
+                st.session_state['recipe-new-document'] = source_to_draft(source,import_type)
+                st.session_state['recipe-selected'] = 'new'
+                st.success('Recipe loaded into Add or edit recipe. Review serving yield, preparation states, original quantities and source foods before saving.')
+            except (ValueError,RecipeWebUnavailable) as error:
+                st.error(str(error))
 
 
 def show_totals(result):
@@ -48,6 +73,10 @@ with editor:
         document = library.recipes[selected]
     prefix = f"recipe-form-{document['id']}-{document.get('revision', 0)}"
     original_lines = document.get('ingredients', [])
+    if any(line.get('source_ingredient_text') for line in original_lines):
+        with st.expander('Original ingredient amounts from the recipe source'):
+            st.dataframe([{'Ingredient':line['name'],'Source amount':line.get('source_ingredient_text','')} for line in original_lines],hide_index=True,width='stretch')
+        st.caption('Imported cup/spoon weights and preparation states are unverified. Enter measured amounts or reviewed conversions; do not assume universal cup weights.')
     # Keep historical sources selectable alongside newly retrieved source records.
     def food_key(food):
         return f"{food['id']}:{food['state']}:{food['source_hash']}"
@@ -107,7 +136,7 @@ with editor:
                 lines.append({'name': row.get('Ingredient'), 'quantity': row.get('Quantity'), 'unit': row.get('Unit') or 'g',
                               'state': row.get('State') or 'raw', 'food': deepcopy(food), 'component': row.get('Shared component') or 'Main dish',
                               'grams_per_unit': row.get('Grams per unit'), 'conversion_note': row.get('Conversion note') or ''})
-            result = library.save({'id': document['id'], 'name': name, 'dish_family': family, 'meal_type': meal_type,
+            result = library.save({**document, 'id': document['id'], 'name': name, 'dish_family': family, 'meal_type': meal_type,
                                    'cuisine': cuisine, 'servings': servings, 'cooked_yield_g': yield_g, 'yield_note': yield_note,
                                    'ingredients': lines, 'instructions': instructions.splitlines(), 'effort': effort,
                                    'active_minutes': active_minutes, 'equipment': [item.strip() for item in equipment.split(',') if item.strip()],
@@ -197,4 +226,4 @@ with sources:
                     st.success(f"Source food saved {scope}. It will be available in the recipe editor on the next page refresh.")
                 except (ValueError, StorageUnavailable) as error:
                     st.error(str(error))
-    st.caption('Recipe web discovery and automatic recipe extraction arrive in milestone 4. This editor saves recipes you enter.')
+    st.caption('Discover online imports recipe ingredients and steps for review. Source foods are matched separately here so nutrition uses reviewed quantities and food records.')

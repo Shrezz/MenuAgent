@@ -9,6 +9,11 @@ demo = service()
 end = demo.week_start + timedelta(days=6)
 page_heading("Your kitchen, planned", "This week",
              f"{demo.week_start:%B %d}–{end:%d, %Y} · shared meals, individual portions")
+if demo.persistent:
+    from application.ui.planning import render_planning
+    render_planning(demo)
+    st.divider()
+    st.subheader('Sample menu preview')
 left, right = st.columns([3, 1])
 with left:
     st.write(f"**{demo.status}** · Revision {demo.revision}")

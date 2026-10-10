@@ -39,7 +39,7 @@ with st.sidebar:
     st.divider()
     if demo.persistent:
         st.caption(demo.household_name)
-        st.caption("Profiles, preferences, kitchen stock, recipes and reviewed receipts are saved. Weekly menus and history remain sample previews.")
+        st.caption("Household records, receipts, planning jobs and automatic menu drafts are saved. The separate sample preview stays in this session.")
         if st.button("Reload saved household", width="stretch"):
             try:
                 demo.refresh()

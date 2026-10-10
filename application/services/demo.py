@@ -218,6 +218,15 @@ class DemoService:
         return True
 
     @property
+    def menu_planner(self):
+        if not self.persistent:
+            raise ValueError('Set up PostgreSQL to use durable automatic planning.')
+        from application.services.menus import MenuPlanner
+        if not hasattr(self, '_menu_planner'):
+            self._menu_planner = MenuPlanner(self)
+        return self._menu_planner
+
+    @property
     def receipt_review(self):
         from application.services.receipts import ReceiptReview
         if not hasattr(self, '_receipt_review'):

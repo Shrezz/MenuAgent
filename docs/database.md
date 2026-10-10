@@ -1,6 +1,6 @@
 # Household persistence
 
-The app persists household members, preferences, inventory, structured recipes, source-food cache entries and reviewed receipts in PostgreSQL. Weekly menus and history remain preview data until their own milestones. New database households start empty.
+The app persists household members, preferences, inventory, structured recipes, source-food cache entries and reviewed receipts in PostgreSQL. Automatic menu drafts and planning progress persist too; finalized-menu reservations and cooking events remain pending. New database households start empty.
 
 ## Local database
 
@@ -45,6 +45,8 @@ Bootstrap prints the new household UUID for server configuration. Migrations use
 Migration 003 adds recipe_versions and food_sources, with the same household/editor row policies. Recipes are insert-only immutable revisions for the app role; source cache updates do not rewrite saved recipe snapshots.
 
 Migration 004 adds receipts with original image bytes, model/extraction provenance and reviewed purchase confirmation. Household row policies protect images as well as extracted records. The application can insert receipts and update confirmation fields; it cannot alter extraction provenance. See [receipts-and-ollama.md](receipts-and-ollama.md).
+
+Migration 005 adds immutable planning input snapshots and menu candidates, plus mutable job status/progress under the same household policies. Saving a candidate recomputes its report; changed household versions cannot become a ready job.
 
 editor_access is administrator-provisioned. The application can read its editor's memberships but cannot grant access. Members and stock have household-scoped keys; queries filter by household and PostgreSQL enforces household/editor row policies. Transaction-local settings clear when connections close. Runtime uses short-lived connections and rejects superuser/RLS bypass roles.
 

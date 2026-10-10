@@ -32,6 +32,10 @@ def render_receipt_upload(household, uploaded):
         if receipt["confirmed_at"] is not None:
             st.success("This receipt is already confirmed. Its purchases will not be added again.")
             st.dataframe(receipt["reviewed_items"], hide_index=True, width="stretch")
+            if household.persistent:
+                st.page_link('application/ui/pages/week.py',label='Open automatic menu planning')
+                if st.session_state.get('receipt-planning-notice'):
+                    st.warning(st.session_state.pop('receipt-planning-notice'))
             return
         st.subheader("Review your purchases")
         st.caption("Check every name, quantity, unit and storage location. Remove incorrect or non-food rows. Blank quantities stay untracked; each means a counted item or package, not a weight.")
@@ -43,9 +47,18 @@ def render_receipt_upload(household, uploaded):
         with st.form("real-receipt-" + image_hash):
             edited = st.data_editor(frame, column_config=inventory_columns(), num_rows="dynamic", width="stretch",
                                     key="receipt-stock-" + image_hash)
+            plan_after = st.checkbox('Plan the selected week after confirming purchases',value=True) if household.persistent else False
+            if household.persistent:
+                st.caption('Planning will use the selected week, South Indian vegetarian recipes, web discovery and new suggestions for review. Adjust options on This week for a later draft.')
             confirmed = st.form_submit_button("Confirm reviewed purchases", type="primary")
         if confirmed:
             review.confirm(image_hash, records(edited))
+            if plan_after:
+                try:
+                    job_id = household.menu_planner.start(source_event=image_hash)
+                    st.session_state['planner-job-select'] = job_id
+                except (ValueError,StorageUnavailable):
+                    st.session_state['receipt-planning-notice'] = 'Purchases were saved, but planning could not be queued. Open This week and generate a menu.'
             # The kitchen editor may have been rendered before this confirmation.
             st.session_state.pop("inventory-editor", None)
             st.rerun()
