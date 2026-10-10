@@ -1,5 +1,7 @@
 import streamlit as st
+import pandas as pd
 from application.ui.components import inventory_columns, page_heading, records, service
+from database.connection import StorageUnavailable
 
 demo = service()
 page_heading("Start with what's available", "Groceries & stock",
@@ -27,12 +29,14 @@ with receipt_tab:
             edited = st.data_editor(demo.receipt_items, column_config=inventory_columns(),
                                     num_rows="dynamic", width="stretch", key="receipt-editor")
             confirmed = st.form_submit_button("Confirm sample purchases",
-                                              disabled="sample-receipt-v1" in demo.confirmed_receipts)
+                                              disabled=demo.persistent or "sample-receipt-v1" in demo.confirmed_receipts)
+        if demo.persistent:
+            st.caption("Sample purchases only update preview mode. Enter your actual purchases under Kitchen stock.")
         if confirmed:
             try:
                 demo.confirm_sample_receipt(records(edited))
                 st.rerun()
-            except ValueError as error:
+            except (ValueError, StorageUnavailable) as error:
                 st.error(str(error))
         if demo.confirmed_receipts:
             st.success("Sample purchases added to kitchen stock for this session.")
@@ -40,14 +44,16 @@ with receipt_tab:
 with stock_tab:
     st.caption("Leave quantities blank for confirmed, untracked staples.")
     with st.form("inventory-review"):
-        edited_stock = st.data_editor(demo.inventory, column_config=inventory_columns(),
+        stock_rows = pd.DataFrame(demo.inventory, columns=["Item", "Location", "Quantity", "Unit", "Status"]).astype(
+            {"Item": "string", "Location": "string", "Quantity": "float64", "Unit": "string", "Status": "string"})
+        edited_stock = st.data_editor(stock_rows, column_config=inventory_columns(),
                                      num_rows="dynamic", width="stretch", key="inventory-editor")
         saved = st.form_submit_button("Save stock changes", type="primary")
     if saved:
         try:
-            demo.inventory = demo.clean_inventory(records(edited_stock))
-            st.success("Kitchen stock updated for this session.")
-        except ValueError as error:
+            demo.save_inventory(records(edited_stock))
+            st.success("Kitchen stock saved in your household." if demo.persistent else "Kitchen stock updated for this session.")
+        except (ValueError, StorageUnavailable) as error:
             st.error(str(error))
     st.subheader("Freezer")
     frozen = [row for row in demo.inventory if row["Location"] == "Freezer"]

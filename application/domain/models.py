@@ -1,4 +1,4 @@
-"""UI preview records. Sourced nutrition and database records arrive next."""
+"""UI and household records. Sourced recipe quantities and nutrition arrive next."""
 from dataclasses import dataclass, field
 
 MEAL_TYPES = ("Breakfast", "Lunch", "Dinner", "Snack")

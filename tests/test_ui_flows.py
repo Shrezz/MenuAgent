@@ -1,6 +1,8 @@
 """Exercise state changes through Streamlit's real widget/rerun lifecycle."""
 from pathlib import Path
+import os
 import unittest
+from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 
 
@@ -9,6 +11,9 @@ APP_PATH = Path(__file__).resolve().parents[1] / "streamlit_app.py"
 
 class UIFlowTests(unittest.TestCase):
     def setUp(self):
+        self.environment = patch.dict(os.environ, {"MENUAGENT_MODE": "preview"})
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
         self.app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
         self.assertFalse(self.app.exception)
 

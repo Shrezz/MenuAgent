@@ -1,7 +1,9 @@
 """Session-only application service used to review the UI before integrations."""
 from copy import deepcopy
 from datetime import date
+from uuid import uuid4
 
+from application.domain.households import clean_inventory, clean_member, clean_settings
 from application.domain.models import MEAL_TYPES, MealSlot, Member, Recipe
 
 
@@ -67,6 +69,8 @@ def sample_recipes() -> dict[str, Recipe]:
 class DemoService:
     """The UI calls this facade; a persistent service can replace it later."""
 
+    persistent = False
+
     def __init__(self):
         self.recipes = sample_recipes()
         self.week_start = date(2026, 10, 12)
@@ -115,7 +119,7 @@ class DemoService:
         return {
             "All 28 meal slots filled": len(self.slots) == 28 and expected == actual,
             "No repeated finished dishes": len(set(recipe_ids)) == len(recipe_ids),
-            "Daily active time within budget": all(self.active_minutes(day) <= self.daily_minutes for day in range(7)),
+            "Daily active time within budget": self.daily_minutes is not None and all(self.active_minutes(day) <= self.daily_minutes for day in range(7)),
         }
 
     def alternatives(self, slot_index):
@@ -173,28 +177,24 @@ class DemoService:
 
     @staticmethod
     def clean_inventory(rows):
-        cleaned = []
-        for row in rows:
-            if not str(row.get("Item", "")).strip():
-                continue
-            quantity = row.get("Quantity")
-            if quantity is not None:
-                try:
-                    quantity = float(quantity)
-                except (TypeError, ValueError):
-                    raise ValueError("Quantities must be numbers or left blank.") from None
-                if quantity != quantity:
-                    quantity = None
-                elif quantity < 0:
-                    raise ValueError("Quantities cannot be negative.")
-            cleaned.append({
-                "Item": str(row["Item"]).strip(),
-                "Location": row.get("Location") or "Pantry",
-                "Quantity": quantity,
-                "Unit": str(row.get("Unit") or "g").strip(),
-                "Status": row.get("Status") or "Available",
-            })
-        return cleaned
+        return clean_inventory(rows)
+
+    def add_member(self, name, kind="Adult", age_group=""):
+        self.save_member(Member(str(uuid4()), name, kind, age_group))
+
+    def save_member(self, member):
+        cleaned = clean_member(member)
+        index = next((i for i, item in enumerate(self.members) if item.id == cleaned.id), None)
+        if index is None:
+            self.members.append(cleaned)
+        else:
+            self.members[index] = cleaned
+
+    def save_settings(self, cuisines, daily_minutes, batch_minutes):
+        self.cuisines, self.daily_minutes, self.batch_minutes = clean_settings(cuisines, daily_minutes, batch_minutes)
+
+    def save_inventory(self, rows):
+        self.inventory = clean_inventory(rows)
 
     def confirm_sample_receipt(self, rows):
         receipt_id = "sample-receipt-v1"

@@ -1,7 +1,7 @@
 """Run with: python -m streamlit run streamlit_app.py"""
 from datetime import timedelta
 import streamlit as st
-from application.ui.components import service
+from application.ui.components import clear_editor_widgets, service
 
 st.set_page_config(page_title="MenuAgent", page_icon="🌿", layout="wide")
 st.markdown(
@@ -37,9 +37,27 @@ pages = [
 navigation = st.navigation(pages)
 with st.sidebar:
     st.divider()
-    st.caption("UI preview · sample household")
-    st.caption("Edits last for this browser session. Recipe quantities and nutrition are still pending.")
-    if st.button("Reset sample household", width="stretch"):
-        st.session_state.clear()
-        st.rerun()
+    if demo.persistent:
+        st.caption(demo.household_name)
+        st.caption("Profiles, preferences and kitchen stock are saved. Menus and recipes remain sample previews.")
+        if st.button("Reload saved household", width="stretch"):
+            try:
+                demo.refresh()
+                clear_editor_widgets()
+                st.rerun()
+            except (ValueError, RuntimeError) as error:
+                st.error(str(error))
+        if st.button("Reset menu preview", width="stretch"):
+            st.session_state.clear()
+            st.rerun()
+        from application.config import RuntimeConfig
+        if RuntimeConfig.load().access_mode == "oidc" and st.button("Sign out", width="stretch"):
+            st.session_state.clear()
+            st.logout()
+    else:
+        st.caption("UI preview · sample household")
+        st.caption("Edits last for this browser session. Recipe quantities and nutrition are still pending.")
+        if st.button("Reset sample household", width="stretch"):
+            st.session_state.clear()
+            st.rerun()
 navigation.run()

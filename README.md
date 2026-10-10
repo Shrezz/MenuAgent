@@ -1,44 +1,66 @@
-# MenuAgent UI Preview
+# MenuAgent
 
-An interactive Streamlit prototype for reviewing the MenuAgent MVP. The original implementation handoff is saved as plan.MD version 1 and archived in docs/plans/plan-v1.MD, including the four diagrams.
+Streamlit household menu planner with durable household records and a sample weekly-menu preview. The product baseline is plan.MD version 1, archived unchanged in docs/plans/plan-v1.MD.
 
 ## Run locally
 
-From this directory:
+Python 3.12 is the tested runtime. From this directory:
 
-    python3 -m venv .venv
-    .venv/bin/python -m pip install -r requirements.txt
-    .venv/bin/python -m streamlit run streamlit_app.py
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m database.local setup
+.venv/bin/python -m streamlit run streamlit_app.py
+```
 
-## Preview capabilities
+Setup prefers Docker when its daemon is available; otherwise it uses PostgreSQL CLI tools on PATH. Select --backend docker or --backend native explicitly if needed. Docker setup creates a project-specific PostgreSQL 17 container and persistent volume, bound to 127.0.0.1:55432. Native setup creates a private socket-only cluster. Existing unrelated databases are not modified.
 
-- This week: day and week layouts, recipe swaps, locked meals, preview checks and finalization.
-- Individual portions: entered adult targets, a child balanced-food mode, and tentative serving controls.
-- Groceries and stock: image upload preview, a clearly separate sample receipt review, and editable stock.
-- Recipes: ingredient search, cuisine and meal filters, and household ratings.
-- Household: profile editing, manual targets and shared cooking preferences.
-- History: session snapshots of finalized preview versions.
+The app uses the private local configuration after setup. Start on **Household**, add members and optional daily targets, then save cooking preferences. Add fridge, pantry and freezer items under **Groceries & stock → Kitchen stock**. A new household starts empty; sample profiles and stock are not seeded into it.
 
-The demo service uses sample household records and recipes. Changes last for the browser session. Recipe quantities, calculated nutrition, durable PostgreSQL persistence, receipt OCR, web recipe import and the real planning agent are the next implementation milestones. Uploaded images are displayed locally; sample receipt items are independent of the image.
+```sh
+.venv/bin/python -m database.local status
+.venv/bin/python -m database.local stop
+.venv/bin/python -m database.local start
+```
 
-The prototype checks meal coverage, sample recipe uniqueness and daily sample active time. The full dietary, inventory and nutrition validators remain in the version 1 plan.
+Stop retains database records and the Docker volume. Local editor mode requires Streamlit's loopback binding. Remote access requires configured authentication; see docs/database.md.
 
-## Project documentation
+## Implemented
 
-- PROGRESS.md: completed prototype work, verification and remaining MVP milestones.
-- plan.MD: version 1 product baseline and diagrams.
-- docs/directory-structure.md: current application and agent layout, with planned modules identified.
-- docs/framework-options.md: Streamlit recommendation and alternatives.
-- docs/plans/: archived plan versions.
+- PostgreSQL migrations and household-scoped repositories for profiles, preferences and kitchen stock.
+- Add/edit adult and child profiles; optional manually entered calorie and macro targets; children start without numeric targets.
+- Shared cuisines and explicitly entered cooking/batch budgets. Unentered budgets remain unset.
+- Ingredient quantities, location, unit and status; untracked staples retain unknown quantities.
+- Transactional saves, optimistic versions, row-level access policies and a non-administrative application role.
+- Saved-record reload and persistence across new browser sessions. Menu-preview resets retain household records.
+- Five pages with the original sample menu, recipe search, swaps, locks, portion controls and session history.
+
+Recipe quantities, nutrition calculations, real receipt extraction, recipe imports, the planning agent and durable menu/recipe history remain pending. Dietary restrictions are stored but are not yet enforced against the sample menu. Sample receipt confirmation is disabled in persistent mode to keep sample purchases out of actual stock.
+
+## Preview without a database
+
+```sh
+MENUAGENT_MODE=preview .venv/bin/python -m streamlit run streamlit_app.py
+```
+
+This uses sample household records and session-only storage. The sidebar states which data is saved and which remains a preview. Without a configured database the app defaults to preview mode. A configured but unavailable database displays an error rather than falling back to sample data.
 
 ## Validation
 
-    python -m unittest discover -s tests
+```sh
+.venv/bin/python -m database.test
+```
 
-Verified with Python 3.12 and Streamlit 1.65.0. All five pages load in Streamlit's application test runner. Eight tests pass, covering preserved meal locks, weekly uniqueness, duplicate receipt confirmation, atomic invalid-input handling, rejected swaps, historical snapshots and profile edits across page reruns.
+The runner creates an isolated test database, runs the suite and removes that test database. It does not edit the household used by the app. The current milestone passes 32 tests against PostgreSQL, including household isolation, stale saves, rollback, revoked access and Streamlit persistence across new sessions.
 
-## UI review
+Without integration configuration, python -m unittest discover -s tests runs unit/preview tests and reports database tests as skipped. External test environments can supply MENUAGENT_TEST_ADMIN_DATABASE_URL and MENUAGENT_TEST_DATABASE_URL; see docs/database.md.
 
-Start on **This week** and explore the day layout and individual portions. Lock a meal, preview a fresh draft, then finalize a version and open **History**. In **Groceries & stock**, load the separate sample receipt, review it and confirm the purchases. Use **Household** to edit adult targets or the child's profile, and **Recipes** to browse the categorized sample collection.
+## Documentation
 
-Screenshots from the running prototype are saved in docs/screenshots/. The repository layout and prepared integration directories are documented in docs/directory-structure.md.
+- PROGRESS.md: completed chunks and remaining milestones, numbered to match plan.MD.
+- docs/database.md: database setup, access, configuration and testing.
+- docs/directory-structure.md: implemented modules and future agent modules.
+- docs/framework-options.md: frontend choices.
+- docs/screenshots/: original UI preview captures.
+
+Private runtime configuration and generated development credentials live under ignored .local/, with private filesystem permissions. API keys, .env files and credentials must remain outside version control.
