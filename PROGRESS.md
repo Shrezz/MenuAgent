@@ -2,11 +2,23 @@
 
 Updated: October 9, 2026
 
-## Current milestone: Recipes and calculations v0.3
+## Current milestone: Local receipt review v0.4
 
-Implementation chunk 3 is complete: the recipe library and calculation foundation, corresponding to **milestone 2: Recipes and calculations** in plan.MD. Chunk 2 completed household/database persistence (milestone 1). The UI prototype was implementation chunk 1; it preceded the plan's numbered backend milestones.
+Implementation chunk 4 adds the receipt portion of milestone 4 ahead of the planning worker, at the user's request. Implementation chunk 3 completed: the recipe library and calculation foundation, corresponding to **milestone 2: Recipes and calculations** in plan.MD. Chunk 2 completed household/database persistence (milestone 1). The UI prototype was implementation chunk 1; it preceded the plan's numbered backend milestones.
 
 The original remaining-work list in this file used different numbering. The table below now follows plan.MD exactly. Receipt extraction belongs to milestone 4; recipes and calculations belong to milestone 2. Archived version 1 remains unchanged. The agreed cooking-preference revision is recorded in plan.MD version 2 and docs/plans/plan-v2.MD.
+
+## Completed in chunk 4
+
+- Local Ollama vision adapter using the already installed Gemma 4 E2B model, structured JSON output, finite request limits, input-image validation, EXIF handling and sanitized failures. No API key or additional model download required.
+- Real uploaded-receipt flow: explicit Read action, original text/notes, editable ingredients/quantities/units/locations and explicit confirmation. Reading does not update stock.
+- PostgreSQL migration 004 retaining original images, immutable extraction/model provenance and reviewed confirmation records under household row policies.
+- Duplicate protection for identical image bytes across browser sessions. Purchase merging, confirmation and household version advance occur in one transaction. Stale sessions and failed writes leave stock and confirmation unchanged.
+- Unknown quantities stay unknown; package counts are not silently converted to grams. Same name/location/unit rows merge; broader synonym/source normalization remains pending.
+- Fifteen additional tests for validation, local-only transport, model failures, corrected UI confirmation, new-session duplicate handling, immutable provenance, isolation, stale saves and rollback.
+- Real local Gemma call on a synthetic receipt: weights/counts/multiplied package size parsed, price-only quantity left blank and non-food item excluded after prompt refinement. The first prompt included that item; no real-receipt accuracy benchmark has been performed.
+
+See docs/receipts-and-ollama.md. Different photos/crops of the same receipt are not yet deduplicated. Synchronous extraction uses a spinner; queued jobs, automatic planning and recipe discovery remain pending. Archived plans remain unchanged.
 
 ## Completed in chunk 3
 
@@ -61,7 +73,7 @@ Equipment and qualitative effort can now be entered per recipe. Household equipm
 
 ## Verification
 
-Tested with Python 3.12, Streamlit 1.65.0 and real PostgreSQL 17. The full suite passes **59 tests**, including new-session profile/preference/stock persistence, household isolation through repositories and raw SQL, forged household access, access revocation, blocked self-provisioning, unsafe role rejection, stale saves, transaction rollback, unknown quantities, all five pages with an empty persistent household and the existing preview flows.
+Tested with Python 3.12, Streamlit 1.65.0 and real PostgreSQL 17. The full suite passes **74 tests**, including new-session profile/preference/stock persistence, household isolation through repositories and raw SQL, forged household access, access revocation, blocked self-provisioning, unsafe role rejection, stale saves, transaction rollback, unknown quantities, all five pages with an empty persistent household and the existing preview flows.
 
 ```sh
 python -m database.local setup
@@ -77,8 +89,8 @@ The runner creates a separate test database and removes it afterward. Applicatio
 | 1 Household records | Complete for one local editor: PostgreSQL migrations, editor scoping, profiles, shared settings and manual stock. Remote identity-provider setup and verification remain deployment work. |
 | 2 Recipes and calculations | Complete foundation: versioned recipes, ingredient normalization, reviewed USDA matching, yield/portion arithmetic and deterministic candidate validation. Known fixtures reproduce totals and expose unknowns. See docs/recipes-and-nutrition.md for boundaries. |
 | 3 Planning loop | Next: background worker, snapshots, tools, bounded evaluator/optimizer revisions and checked seven-day drafts. The illustrative loop from chat is not installed. |
-| 4 Receipt and discovery inputs | Pending: editable extraction, normalized review, durable duplicate handling, purchase confirmation, discovery/import and provenance. |
+| 4 Receipt and discovery inputs | Receipt foundation complete: local vision extraction, editable review, retained provenance, identical-image duplicate handling and atomic purchase confirmation. Discovery/import, semantic receipt identity matching and broader stock normalization remain pending. |
 | 5 Weekly use | Pending: recalculating swaps/locks, prep/shopping/freezer tasks, durable recipe/menu snapshots, reservations, cooking/skip events and feedback. |
 | 6 MVP verification | Pending: full end-to-end acceptance scenarios, deployment configuration and integration checks. |
 
-The app now stores household inputs, reviewed source-food cache entries and immutable recipe revisions. Weekly menus, sample menu ratings and preview history remain session-based samples. There is no AI planner or receipt extraction yet. Recipe/portion arithmetic and pure candidate checks are implemented; the sample week does not use them. Child balanced-food guidance and normalized stock reconciliation remain explicit missing-data boundaries for the upcoming planning runtime.
+The app now stores household inputs, reviewed source-food cache entries and immutable recipe revisions. Weekly menus, sample menu ratings and preview history remain session-based samples. Local Ollama receipt extraction and reviewed purchase confirmation are implemented. The AI planning worker is still pending. Recipe/portion arithmetic and pure candidate checks are implemented; the sample week does not use them. Child balanced-food guidance and normalized stock reconciliation remain explicit missing-data boundaries for the upcoming planning runtime.

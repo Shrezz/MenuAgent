@@ -39,7 +39,7 @@ with st.sidebar:
     st.divider()
     if demo.persistent:
         st.caption(demo.household_name)
-        st.caption("Profiles, preferences, kitchen stock and recipes are saved. Weekly menus and history remain sample previews.")
+        st.caption("Profiles, preferences, kitchen stock, recipes and reviewed receipts are saved. Weekly menus and history remain sample previews.")
         if st.button("Reload saved household", width="stretch"):
             try:
                 demo.refresh()
@@ -56,7 +56,7 @@ with st.sidebar:
             st.logout()
     else:
         st.caption("UI preview · sample household")
-        st.caption("Edits last for this browser session. Recipe quantities and nutrition are still pending.")
+        st.caption("Edits last for this browser session. Weekly menus remain sample previews.")
         if st.button("Reset sample household", width="stretch"):
             st.session_state.clear()
             st.rerun()

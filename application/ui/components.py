@@ -59,7 +59,7 @@ def service() -> DemoService:
 
 def clear_editor_widgets():
     for key in list(st.session_state):
-        if key.startswith(("profile-", "add-member-", "stock-editor-")) or key in ("edit-member-id", "portions-member-id", "inventory-editor"):
+        if key.startswith(("profile-", "add-member-", "stock-editor-", "receipt-stock-")) or key in ("edit-member-id", "portions-member-id", "inventory-editor"):
             del st.session_state[key]
 
 

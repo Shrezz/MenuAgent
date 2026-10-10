@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from application.ui.components import inventory_columns, page_heading, records, service
 from application.services.demo import DemoService
+from application.ui.receipt_review import render_receipt_upload
 from database.connection import StorageUnavailable
 
 demo = service()
@@ -11,9 +12,10 @@ receipt_tab, stock_tab = st.tabs(["Receipt review", "Kitchen stock"])
 with receipt_tab:
     left, right = st.columns([3, 2])
     with left:
-        uploaded = st.file_uploader("Grocery receipt", type=["png", "jpg", "jpeg"])
+        uploaded = st.file_uploader("Grocery receipt", type=["png", "jpg", "jpeg"], max_upload_size=8,
+                                    help="Use a readable PNG or JPEG receipt of up to 8 MB. The model's results need your review.")
         if uploaded:
-            st.image(uploaded, caption="Uploaded receipt · extraction is pending integration", width="stretch")
+            render_receipt_upload(demo, uploaded)
         else:
             with st.container(border=True):
                 st.write("**Your Sunday starting point**")

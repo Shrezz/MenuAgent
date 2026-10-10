@@ -4,6 +4,9 @@ import os
 import unittest
 from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
+from io import BytesIO
+from test_receipts import receipt_image, receipt_result
+from application.domain.receipts import receipt_hash
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "streamlit_app.py"
@@ -51,6 +54,38 @@ class UIFlowTests(unittest.TestCase):
         yogurt = next(row for row in service.inventory if row["Item"] == "Yogurt")
         self.assertEqual(yogurt["Quantity"], 1000.0)
         self.assertFalse(self.app.exception)
+
+    def test_actual_receipt_requires_read_and_editable_confirmation(self):
+        with patch('streamlit.file_uploader', return_value=BytesIO(receipt_image())), \
+             patch('integrations.ollama.OllamaReceiptReader.extract', return_value=receipt_result()) as read:
+            self.app.switch_page('application/ui/pages/groceries.py').run()
+            read.assert_not_called()
+            before = self.app.session_state['_demo_service'].inventory[0]['Quantity']
+            self.button('Read receipt with Ollama').click().run()
+            self.assertFalse(self.app.exception)
+            self.assertEqual(read.call_count, 1)
+            # Reading must not affect the sample household's stock.
+            self.assertEqual(self.app.session_state['_demo_service'].inventory[0]['Quantity'], before)
+            self.app.session_state['receipt-stock-' + receipt_hash(receipt_image())] = {
+                'edited_rows': {0: {'Quantity': 250.0}}, 'deleted_rows': [], 'added_rows': []}
+            self.button('Confirm reviewed purchases').click().run()
+            self.assertFalse(self.app.exception)
+            self.assertFalse(self.app.error)
+            yogurt = next(r for r in self.app.session_state['_demo_service'].inventory if r['Item'] == 'Yogurt')
+            self.assertEqual(yogurt['Quantity'], 750.0)
+            self.assertTrue(self.button('Read receipt with Ollama').disabled)
+            self.assertTrue(any('already confirmed' in message.value for message in self.app.success))
+            self.assertEqual(read.call_count, 1)
+
+    def test_model_error_preserves_stock_and_allows_retry(self):
+        from integrations.ollama import ReceiptModelUnavailable
+        with patch('streamlit.file_uploader', return_value=BytesIO(receipt_image())), \
+             patch('integrations.ollama.OllamaReceiptReader.extract', side_effect=ReceiptModelUnavailable('Model is unavailable')):
+            self.app.switch_page('application/ui/pages/groceries.py').run()
+            self.button('Read receipt with Ollama').click().run()
+            self.assertFalse(self.app.exception)
+            self.assertTrue(any('Model is unavailable' in message.value for message in self.app.error))
+            self.assertFalse(self.button('Read receipt with Ollama').disabled)
 
     def test_history_and_locks_survive_navigation_and_regeneration(self):
         self.button("Finalize preview").click().run()

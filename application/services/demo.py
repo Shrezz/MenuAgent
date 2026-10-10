@@ -218,6 +218,13 @@ class DemoService:
         return True
 
     @property
+    def receipt_review(self):
+        from application.services.receipts import ReceiptReview
+        if not hasattr(self, '_receipt_review'):
+            self._receipt_review = ReceiptReview(self)
+        return self._receipt_review
+
+    @property
     def recipe_library(self):
         from application.services.recipes import RecipeLibrary
         if not hasattr(self, '_recipe_library'):

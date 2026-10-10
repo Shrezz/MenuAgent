@@ -70,9 +70,12 @@ class HouseholdRepository:
         cleaned = clean_inventory(rows)
         with self.database.transaction(self.context) as conn:
             version = self._advance(conn, expected_version)
-            conn.execute("DELETE FROM menuagent.inventory_items WHERE household_id = %s", (self.context.household_id,))
-            for position, row in enumerate(cleaned):
-                conn.execute("""INSERT INTO menuagent.inventory_items (household_id, item_key, name, location, quantity, unit, status, position)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (self.context.household_id, row['Item'].casefold(), row['Item'], row['Location'], row['Quantity'], row['Unit'], row['Status'], position))
+            self._write_inventory(conn, cleaned)
         return version
+
+    def _write_inventory(self, conn, cleaned):
+        conn.execute("DELETE FROM menuagent.inventory_items WHERE household_id = %s", (self.context.household_id,))
+        for position, row in enumerate(cleaned):
+            conn.execute("""INSERT INTO menuagent.inventory_items (household_id, item_key, name, location, quantity, unit, status, position)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (self.context.household_id, row['Item'].casefold(), row['Item'], row['Location'], row['Quantity'], row['Unit'], row['Status'], position))

@@ -21,6 +21,10 @@ from application.repositories.recipes import RecipeRepository
 from application.domain.nutrition import calculate_recipe
 from database.connection import AccessDenied, ConcurrentChange, Database, EditorContext, StorageUnavailable
 from database.manage import bootstrap_household, grant_app_role, migrate
+from application.repositories.receipts import ReceiptRepository
+from application.domain.receipts import receipt_hash, extraction_rows
+from test_receipts import receipt_image, receipt_result
+from io import BytesIO
 
 ENABLED = bool(os.environ.get('MENUAGENT_TEST_ADMIN_DATABASE_URL') and os.environ.get('MENUAGENT_TEST_DATABASE_URL'))
 APP_PATH = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
@@ -62,7 +66,99 @@ class HouseholdPostgresTests(unittest.TestCase):
         migrate(self.admin)
         with psycopg.connect(self.admin) as conn:
             count = conn.execute('SELECT count(*) FROM menuagent.schema_migrations').fetchone()[0]
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)
+
+    def test_receipt_confirmation_is_durable_atomic_and_once_only(self):
+        service = HouseholdService(self.repo)
+        image, result = receipt_image(), receipt_result()
+        receipts = ReceiptRepository(self.repo)
+        record = receipts.save_extraction(image, result)
+        self.assertEqual(self.repo.read().inventory, [])
+        self.assertEqual(self.repo.read().version, 1)
+        # Re-reading after a session reset reuses the stored extraction.
+        with patch('integrations.ollama.OllamaReceiptReader.extract') as read:
+            self.assertEqual(service.receipt_review.read(image)['extraction'], result['extraction'])
+            read.assert_not_called()
+        rows = extraction_rows(record['extraction'])
+        rows[0]['Quantity'] = 350
+        service.receipt_review.confirm(record['image_hash'], rows)
+        self.assertEqual(HouseholdService(self.repo).inventory[0]['Quantity'], 350)
+        self.assertIsNone(self.repo.read().inventory[1]['Quantity'])
+        self.assertEqual(receipts.find(record['image_hash'])['reviewed_items'][0]['Quantity'], 350)
+        with self.assertRaises(ValueError):
+            HouseholdService(self.repo).receipt_review.confirm(record['image_hash'], rows)
+        self.assertEqual(self.repo.read().version, 2)
+        self.assertEqual(self.repo.read().inventory[0]['Quantity'], 350)
+
+    def test_stale_receipt_confirmation_can_be_retried_after_reload(self):
+        service = HouseholdService(self.repo)
+        receipts = ReceiptRepository(self.repo)
+        record = receipts.save_extraction(receipt_image(), receipt_result())
+        self.repo.save_inventory([{'Item': 'Yogurt', 'Location': 'Fridge', 'Quantity': 500, 'Unit': 'g'}], 1)
+        rows = extraction_rows(record['extraction'])
+        with self.assertRaises(ConcurrentChange):
+            service.receipt_review.confirm(record['image_hash'], rows)
+        self.assertIsNone(receipts.find(record['image_hash'])['confirmed_at'])
+        self.assertEqual(self.repo.read().inventory[0]['Quantity'], 500)
+        service.refresh()
+        service.receipt_review.confirm(record['image_hash'], rows)
+        self.assertEqual(self.repo.read().inventory[0]['Quantity'], 1500)
+
+    def test_receipt_image_provenance_is_immutable_and_household_scoped(self):
+        receipts = ReceiptRepository(self.repo)
+        image = receipt_image()
+        record = receipts.save_extraction(image, receipt_result())
+        changed = receipt_result()
+        changed['extraction']['items'][0]['quantity'] = 999
+        self.assertEqual(receipts.save_extraction(image, changed)['extraction']['items'][0]['quantity'], 1000)
+        self.assertIsNone(ReceiptRepository(self.other).find(record['image_hash']))
+        with Database(self.app_conninfo).transaction(EditorContext(self.b, 'bob')) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM menuagent.receipts').fetchone()['n'], 0)
+        with self.assertRaises(AccessDenied):
+            ReceiptRepository(HouseholdRepository(Database(self.app_conninfo), EditorContext(self.a, 'bob'))).find(record['image_hash'])
+        with self.assertRaises(StorageUnavailable):
+            with Database(self.app_conninfo).transaction(self.context) as conn:
+                conn.execute("UPDATE menuagent.receipts SET model = 'forged'")
+        with Database(self.app_conninfo).transaction(self.context) as conn:
+            stored = conn.execute('SELECT image_bytes FROM menuagent.receipts').fetchone()['image_bytes']
+        self.assertEqual(bytes(stored), image)
+
+    def test_failed_receipt_transaction_preserves_receipt_stock_and_version(self):
+        service = HouseholdService(self.repo)
+        service.save_inventory([{'Item': 'Rice', 'Quantity': 1000}])
+        receipt = ReceiptRepository(self.repo).save_extraction(receipt_image(), receipt_result())
+        before = self.repo.read()
+        with psycopg.connect(self.admin) as conn:
+            conn.execute("""CREATE OR REPLACE FUNCTION menuagent.reject_test_inventory() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'Simulated database write failure'; END $$""")
+            conn.execute("""CREATE TRIGGER reject_test_inventory BEFORE INSERT ON menuagent.inventory_items
+                FOR EACH ROW WHEN (NEW.name = 'Rejected ingredient') EXECUTE FUNCTION menuagent.reject_test_inventory()""")
+        self.addCleanup(self.remove_failure_trigger)
+        with self.assertRaises(StorageUnavailable):
+            service.receipt_review.confirm(receipt['image_hash'], [{'Item': 'Rejected ingredient', 'Quantity': 100}])
+        self.assertEqual(self.repo.read().inventory, before.inventory)
+        self.assertEqual(self.repo.read().version, before.version)
+        self.assertIsNone(ReceiptRepository(self.repo).find(receipt['image_hash'])['confirmed_at'])
+
+    def test_receipt_ui_review_and_new_session_preserve_duplicate_guard(self):
+        with self.ui_environment(), patch('streamlit.file_uploader', return_value=BytesIO(receipt_image())), \
+             patch('integrations.ollama.OllamaReceiptReader.extract', return_value=receipt_result()) as read:
+            app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            app.switch_page('application/ui/pages/groceries.py').run()
+            self.button(app, 'Read receipt with Ollama').click().run()
+            self.assertEqual(self.repo.read().inventory, [])
+            app.session_state['receipt-stock-' + receipt_hash(receipt_image())] = {
+                'edited_rows': {0: {'Quantity': 300.0}}, 'deleted_rows': [], 'added_rows': []}
+            self.button(app, 'Confirm reviewed purchases').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            self.assertEqual(self.repo.read().inventory[0]['Quantity'], 300)
+            reopened = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+            reopened.switch_page('application/ui/pages/groceries.py').run()
+            self.assertFalse(reopened.exception)
+            self.assertTrue(self.button(reopened, 'Read receipt with Ollama').disabled)
+            self.assertTrue(any('already confirmed' in message.value for message in reopened.success))
+            self.assertEqual(read.call_count, 1)
 
     def test_upgrade_preserves_records_without_guessing_effort_from_minutes(self):
         name = 'menuagent_upgrade_' + uuid4().hex

@@ -1,6 +1,6 @@
 # Household persistence
 
-The app persists household members, preferences and manual inventory in PostgreSQL. Structured recipes and source-food cache entries now persist too. Weekly menus and history remain preview data until their own milestones. New database households start empty.
+The app persists household members, preferences, inventory, structured recipes, source-food cache entries and reviewed receipts in PostgreSQL. Weekly menus and history remain preview data until their own milestones. New database households start empty.
 
 ## Local database
 
@@ -44,15 +44,17 @@ Bootstrap prints the new household UUID for server configuration. Migrations use
 
 Migration 003 adds recipe_versions and food_sources, with the same household/editor row policies. Recipes are insert-only immutable revisions for the app role; source cache updates do not rewrite saved recipe snapshots.
 
+Migration 004 adds receipts with original image bytes, model/extraction provenance and reviewed purchase confirmation. Household row policies protect images as well as extracted records. The application can insert receipts and update confirmation fields; it cannot alter extraction provenance. See [receipts-and-ollama.md](receipts-and-ollama.md).
+
 editor_access is administrator-provisioned. The application can read its editor's memberships but cannot grant access. Members and stock have household-scoped keys; queries filter by household and PostgreSQL enforces household/editor row policies. Transaction-local settings clear when connections close. Runtime uses short-lived connections and rejects superuser/RLS bypass roles.
 
 Local mode is the verified MVP access path. For remote hosting, configure Streamlit authentication through deployment secrets, choose MENUAGENT_ACCESS_MODE=oidc and provision an editor subject made from the provider's iss and sub claims, separated by |. Claims determine editor identity; there is no household picker or self-registration. A real provider login still needs deployment verification. See [Streamlit authentication](https://docs.streamlit.io/develop/concepts/connections/authentication).
 
 ## Saves and concurrent edits
 
-Successful writes increment the household version. Browser sessions retain their loaded version. Stale saves are rejected with instructions to use **Reload saved household**. Reload clears profile/preference/stock widget values before refreshing the form.
+Successful changes to household inputs increment the household version. Saving a receipt extraction alone does not increment it; confirming purchases does. Browser sessions retain their loaded version. Stale saves are rejected with instructions to use **Reload saved household**. Reload clears profile/preference/stock/receipt-review widget values before refreshing the form.
 
-Stock replacements are one transaction: deletion, insertion and version advancement either all commit or roll back. Blank quantities remain unknown. Whitespace and case normalization distinguish stock within location/unit; canonical food matching arrives in milestone 2.
+Stock replacements are one transaction: deletion, insertion and version advancement either all commit or roll back. Receipt confirmation also marks the receipt confirmed in that transaction, so the same uploaded image cannot add stock twice. Blank quantities remain unknown. Whitespace and case normalization distinguish stock within location/unit; reviewed USDA matching is implemented for recipe ingredients, while broader stock/source reconciliation remains pending.
 
 ## Verification
 

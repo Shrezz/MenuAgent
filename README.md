@@ -36,11 +36,18 @@ Stop retains database records and the Docker volume. Local editor mode requires 
 - Durable recipe editor and collection with quantities, yields, source snapshots and immutable revisions.
 - Reviewed USDA food matching with nine offline source records and optional backend-key live lookup.
 - Deterministic recipe and portion nutrition calculations, plus candidate-validation tools for the upcoming planner.
+- Local Ollama receipt-image extraction, editable purchase review and atomic PostgreSQL confirmation with duplicate protection for identical images.
 - Five pages with the original sample weekly menu, swaps, locks, portion controls and session history.
 
 Saved cooking preferences do not yet adapt sample menus. Put and forget recipes (Instant Pot and source-verified overnight options) are planned for phase 2.
 
-Real receipt extraction, automatic recipe imports, the planning agent and durable menu history remain pending. The weekly preview does not yet use the saved recipe library or its calculations. Child food-variety guidance and normalized stock reconciliation remain explicit review requirements for the upcoming planning runtime. Dietary restrictions are stored but are not yet enforced against the sample menu. Sample receipt confirmation uses a separate session-only stock preview in persistent mode, keeping sample purchases out of actual stock.
+Automatic recipe imports, the planning agent and durable menu history remain pending. The weekly preview does not yet use the saved recipe library or its calculations. Child food-variety guidance and normalized stock reconciliation remain explicit review requirements for the upcoming planning runtime. Dietary restrictions are stored but are not yet enforced against the sample menu. Sample receipt confirmation uses a separate session-only stock preview in persistent mode, keeping sample purchases out of actual stock.
+
+## Read receipts with local Ollama
+
+With Ollama running and `gemma4:e2b` installed, upload a PNG/JPEG in **Groceries & stock → Receipt review**, click **Read receipt with Ollama**, correct the extracted rows and click **Confirm reviewed purchases**. No API key is needed. Extraction does not change stock until confirmation. Images and reviewed records are saved privately in PostgreSQL under household access policies.
+
+The installed Gemma model was tested with a real local call on a synthetic receipt. Select another installed vision model through the backend `MENUAGENT_RECEIPT_MODEL` variable. See [receipts-and-ollama.md](docs/receipts-and-ollama.md) for model choices, limits and duplicate handling. Automatic planning after upload is pending.
 
 ## Preview without a database
 
@@ -56,7 +63,7 @@ This uses sample household records and session-only storage. The sidebar states 
 .venv/bin/python -m database.test
 ```
 
-The runner creates an isolated test database, runs the suite and removes that test database. It does not edit the household used by the app. The current milestone passes 59 tests against PostgreSQL, including household isolation, stale saves, rollback, revoked access and Streamlit persistence across new sessions.
+The runner creates an isolated test database, runs the suite and removes that test database. It does not edit the household used by the app. The current milestone passes 74 tests against PostgreSQL, including household isolation, stale saves, rollback, revoked access and Streamlit persistence across new sessions.
 
 Without integration configuration, python -m unittest discover -s tests runs unit/preview tests and reports database tests as skipped. External test environments can supply MENUAGENT_TEST_ADMIN_DATABASE_URL and MENUAGENT_TEST_DATABASE_URL; see docs/database.md.
 
@@ -65,6 +72,7 @@ Without integration configuration, python -m unittest discover -s tests runs uni
 - PROGRESS.md: completed chunks and remaining milestones, numbered to match plan.MD.
 - docs/database.md: database setup, access, configuration and testing.
 - docs/recipes-and-nutrition.md: recipe editor, calculation contracts, source provenance and current boundaries.
+- docs/receipts-and-ollama.md: local model setup, extraction review and purchase confirmation.
 - docs/directory-structure.md: implemented modules and future agent modules.
 - docs/framework-options.md: frontend choices.
 - docs/screenshots/: original UI preview captures.

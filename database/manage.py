@@ -38,6 +38,8 @@ def grant_app_role(admin_conninfo, role):
         conn.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON menuagent.members, menuagent.inventory_items TO {}").format(sql.Identifier(role)))
         conn.execute(sql.SQL("GRANT SELECT, INSERT ON menuagent.recipe_versions TO {}").format(sql.Identifier(role)))
         conn.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE ON menuagent.food_sources TO {}").format(sql.Identifier(role)))
+        conn.execute(sql.SQL("GRANT SELECT, INSERT ON menuagent.receipts TO {}").format(sql.Identifier(role)))
+        conn.execute(sql.SQL("GRANT UPDATE (reviewed_items, confirmed_at) ON menuagent.receipts TO {}").format(sql.Identifier(role)))
         conn.execute(sql.SQL("GRANT SELECT ON menuagent.editor_access TO {}").format(sql.Identifier(role)))
 
 
